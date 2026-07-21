@@ -25,18 +25,42 @@ from fod_pipeline.core.s3_io import extract_object_id, load_image_from_s3, load_
 from fod_pipeline.hybrid.metrics import build_metrics_report
 from fod_pipeline.pipeline.infer import build_pipeline
 
+RECORD_FIELDS = [
+    "image",
+    "object_id",
+    "mobileclip_gt",
+    "mobileclip_top1",
+    "mobileclip_top2",
+    "classifier_gt",
+    "classifier_pred",
+    "yolo_detected",
+    "mobileclip_ms",
+    "classifier_ms",
+    "pipeline_ms",
+]
+
+PROGRESS_EVERY = 50
+
 
 def evaluate_manifest(
     pipeline,
     manifest_path: str,
     mobileclip_label_map_path: str,
     classifier_label_map_path: str,
+    output_dir: str,
     max_images: int = -1,
-) -> list:
+) -> tuple:
     """Run the hybrid pipeline over every image in a manifest, pairing each
     prediction with its dual ground truth.
 
-    Returns a list of per-image records shaped for fod_pipeline.hybrid.metrics.
+    Writes predictions.csv incrementally (one flush per image) so a crash
+    partway through a large manifest doesn't lose everything already
+    processed. A single image's failure (corrupt file, transient S3 error,
+    unexpected filename) is logged and skipped rather than aborting the
+    whole run - matching the resilience the original MobileCLIP_Alone
+    evaluation script had, extended here to the classifier/hybrid path too.
+
+    Returns (records, failures) - records shaped for fod_pipeline.hybrid.metrics.
     """
     mobileclip_labels = load_label_map(mobileclip_label_map_path)
     classifier_labels = load_label_map(classifier_label_map_path)
@@ -46,40 +70,66 @@ def evaluate_manifest(
     if max_images != -1:
         image_paths = image_paths[:max_images]
 
+    os.makedirs(output_dir, exist_ok=True)
+    predictions_path = os.path.join(output_dir, "predictions.csv")
+
     records = []
+    failures = []
 
-    for i, image_path in enumerate(image_paths, start=1):
-        object_id = extract_object_id(image_path)
-        # Same synonym mapping the pipeline applies to its own MobileCLIP
-        # predictions, so both sides of the Ground Truth A comparison land
-        # in the same vocabulary (see HybridPipeline.predict).
-        mobileclip_gt = canonical_label(
-            mobileclip_labels.get(object_id, "UNKNOWN"), pipeline.mobileclip_synonym_mapping
-        )
-        classifier_gt = classifier_labels.get(object_id, "UNKNOWN")
+    with open(predictions_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=RECORD_FIELDS)
+        writer.writeheader()
 
-        image = load_image_from_s3(prefix + image_path)
-        prediction = pipeline.predict(image)
+        for i, image_path in enumerate(image_paths, start=1):
+            try:
+                object_id = extract_object_id(image_path)
+                # Same synonym mapping the pipeline applies to its own
+                # MobileCLIP predictions, so both sides of the Ground Truth A
+                # comparison land in the same vocabulary (see HybridPipeline.predict).
+                mobileclip_gt = canonical_label(
+                    mobileclip_labels.get(object_id, "UNKNOWN"),
+                    pipeline.mobileclip_synonym_mapping,
+                )
+                classifier_gt = classifier_labels.get(object_id, "UNKNOWN")
 
-        records.append(
-            {
-                "image": os.path.basename(image_path),
-                "object_id": object_id,
-                "mobileclip_gt": mobileclip_gt,
-                "mobileclip_top1": prediction.mobileclip_top1,
-                "mobileclip_top2": prediction.mobileclip_top2,
-                "classifier_gt": classifier_gt,
-                "classifier_pred": prediction.classifier_prediction,
-                "yolo_detected": prediction.yolo_detected,
-                "mobileclip_ms": prediction.mobileclip_ms,
-                "classifier_ms": prediction.classifier_ms,
-                "pipeline_ms": prediction.pipeline_ms,
-            }
-        )
+                image = load_image_from_s3(prefix + image_path)
+                prediction = pipeline.predict(image)
 
-        print(f"{i}/{len(image_paths)} {image_path} -> {prediction.candidates}")
+                record = {
+                    "image": os.path.basename(image_path),
+                    "object_id": object_id,
+                    "mobileclip_gt": mobileclip_gt,
+                    "mobileclip_top1": prediction.mobileclip_top1,
+                    "mobileclip_top2": prediction.mobileclip_top2,
+                    "classifier_gt": classifier_gt,
+                    "classifier_pred": prediction.classifier_prediction,
+                    "yolo_detected": prediction.yolo_detected,
+                    "mobileclip_ms": prediction.mobileclip_ms,
+                    "classifier_ms": prediction.classifier_ms,
+                    "pipeline_ms": prediction.pipeline_ms,
+                }
 
-    return records
+            except Exception as e:
+                failures.append({"image": image_path, "error": repr(e)})
+                print(f"ERROR {image_path}: {e!r}")
+                continue
+
+            records.append(record)
+            writer.writerow(record)
+            f.flush()
+
+            if i % PROGRESS_EVERY == 0 or i == len(image_paths):
+                print(
+                    f"{i}/{len(image_paths)} processed "
+                    f"({len(failures)} failed) - last: {prediction.candidates}"
+                )
+
+    if failures:
+        with open(os.path.join(output_dir, "failures.json"), "w", encoding="utf-8") as f:
+            json.dump(failures, f, indent=2)
+        print(f"WARNING: {len(failures)}/{len(image_paths)} images failed - see failures.json")
+
+    return records, failures
 
 
 def classifier_label_arrays(records: list, class_names: list) -> tuple:
@@ -100,15 +150,8 @@ def classifier_label_arrays(records: list, class_names: list) -> tuple:
     return y_true, y_pred
 
 
-def save_report(records: list, report: dict, output_dir: str) -> None:
+def save_metrics_report(report: dict, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
-
-    with open(
-        os.path.join(output_dir, "predictions.csv"), "w", newline="", encoding="utf-8"
-    ) as f:
-        writer = csv.DictWriter(f, fieldnames=list(records[0].keys()))
-        writer.writeheader()
-        writer.writerows(records)
 
     with open(
         os.path.join(output_dir, "metrics_report.json"), "w", encoding="utf-8"
@@ -152,6 +195,11 @@ def parse_args():
     parser.add_argument(
         "--max-images", type=int, default=-1, help="-1 evaluates every image in the manifest"
     )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Run YOLO/MobileCLIP in fp16 on GPU for faster inference (no effect on CPU)",
+    )
 
     return parser.parse_args()
 
@@ -169,23 +217,32 @@ def main():
         mobileclip_model_name=args.mobileclip_model_name,
         prompts_path=args.prompts,
         mobileclip_mapping_path=args.mobileclip_mapping,
+        fp16=args.fp16,
     )
 
-    records = evaluate_manifest(
+    records, failures = evaluate_manifest(
         pipeline,
         manifest_path=args.manifest,
         mobileclip_label_map_path=args.mobileclip_label_map,
         classifier_label_map_path=args.classifier_label_map,
+        output_dir=args.output_dir,
         max_images=args.max_images,
     )
+
+    if not records:
+        report = {"error": "no images processed successfully", "num_failures": len(failures)}
+        save_metrics_report(report, args.output_dir)
+        print(json.dumps(report, indent=2))
+        return
 
     classifier_y_true, classifier_y_pred = classifier_label_arrays(
         records, pipeline.classifier_class_names
     )
 
     report = build_metrics_report(records, classifier_y_true, classifier_y_pred)
+    report["num_failures"] = len(failures)
 
-    save_report(records, report, args.output_dir)
+    save_metrics_report(report, args.output_dir)
 
     print(json.dumps(report, indent=2))
 

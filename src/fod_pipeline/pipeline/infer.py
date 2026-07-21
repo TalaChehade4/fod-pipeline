@@ -60,6 +60,7 @@ class HybridPipeline:
         device,
         crop_expansion: float = DEFAULT_EXPANSION,
         mobileclip_synonym_mapping: dict | None = None,
+        fp16: bool = False,
     ):
         self.yolo_model = yolo_model
         self.mobileclip_model = mobileclip_model
@@ -70,6 +71,7 @@ class HybridPipeline:
         self.classifier_class_names = classifier_class_names
         self.device = device
         self.crop_expansion = crop_expansion
+        self.fp16 = fp16
         # MobileCLIP's own category vocabulary (e.g. "Bolt") often differs
         # from the dataset's ground-truth vocabulary (e.g. "Bolts") - this
         # maps predictions into the ground-truth vocabulary so comparisons
@@ -90,6 +92,7 @@ class HybridPipeline:
             self.mobileclip_preprocess,
             self.device,
             crop,
+            fp16=self.fp16,
             normalize=True,
         )
         similarity = score_text_prompts(image_features, self.mobileclip_text_features)
@@ -128,19 +131,20 @@ def build_pipeline(
     mobileclip_model_name: str = "mobileclip_s0",
     prompts_path: str | None = None,
     mobileclip_mapping_path: str | None = None,
+    fp16: bool = False,
 ) -> HybridPipeline:
     device = get_device()
 
-    yolo_model = load_yolo(yolo_path, device=device)
+    yolo_model = load_yolo(yolo_path, device=device, fp16=fp16)
     mobileclip_model, preprocess, tokenizer, device = load_mobileclip(
-        mobileclip_path, model_name=mobileclip_model_name, device=device
+        mobileclip_path, model_name=mobileclip_model_name, device=device, fp16=fp16
     )
 
     prompt_config = load_prompt_config(prompts_path)
     categories = prompt_config["categories"]
     templates = prompt_config["templates"]
     text_features = build_text_features(
-        mobileclip_model, tokenizer, categories, templates, device
+        mobileclip_model, tokenizer, categories, templates, device, fp16=fp16
     )
 
     class_names = load_label_names(label_encoder_path)
@@ -164,6 +168,7 @@ def build_pipeline(
         classifier_class_names=class_names,
         device=device,
         mobileclip_synonym_mapping=mobileclip_synonym_mapping,
+        fp16=fp16,
     )
 
 
@@ -186,6 +191,11 @@ def parse_args():
     )
     parser.add_argument("--classifier-weights", type=str, required=True)
     parser.add_argument("--label-encoder", type=str, required=True)
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Run YOLO/MobileCLIP in fp16 on GPU for faster inference (no effect on CPU)",
+    )
 
     return parser.parse_args()
 
@@ -201,6 +211,7 @@ def main():
         mobileclip_model_name=args.mobileclip_model_name,
         prompts_path=args.prompts,
         mobileclip_mapping_path=args.mobileclip_mapping,
+        fp16=args.fp16,
     )
 
     image = Image.open(args.image).convert("RGB")

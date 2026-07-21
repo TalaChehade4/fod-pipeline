@@ -30,6 +30,9 @@ from fod_pipeline.core.s3_io import (
 )
 
 
+CHECKPOINT_EVERY = 200
+
+
 def process_manifest(
     manifest_path: str,
     label_map_path: str,
@@ -39,10 +42,19 @@ def process_manifest(
     device,
     expansion: float = DEFAULT_EXPANSION,
     max_images: int = -1,
-) -> dict:
+    fp16: bool = False,
+    output_dir: str | None = None,
+) -> tuple:
     """Run Stage 1+2 over every image in a manifest.
 
-    Returns {batch_id: [record, ...]}, where each record is
+    A single image's failure (corrupt file, transient S3 error, unexpected
+    filename) is logged and skipped rather than aborting the whole run. If
+    output_dir is given, results are checkpointed to disk every
+    CHECKPOINT_EVERY images so a crash partway through a large manifest
+    doesn't lose everything already processed.
+
+    Returns (batch_results, failures), where batch_results is
+    {batch_id: [record, ...]} and each record is
     {"image", "objectID", "label", "embedding"}.
     """
     label_map = load_label_map(label_map_path)
@@ -52,32 +64,49 @@ def process_manifest(
         image_paths = image_paths[:max_images]
 
     batch_results = {}
+    failures = []
 
-    for image_path in image_paths:
-        object_id = extract_object_id(image_path)
-        label = label_map.get(object_id, "UNKNOWN")
+    for i, image_path in enumerate(image_paths, start=1):
+        try:
+            object_id = extract_object_id(image_path)
+            label = label_map.get(object_id, "UNKNOWN")
 
-        image = load_image_from_s3(prefix + image_path)
+            image = load_image_from_s3(prefix + image_path)
 
-        yolo_results = yolo_model(image)
-        crop, _bbox = crop_yolo_detection(image, yolo_results, expansion=expansion)
+            yolo_results = yolo_model(image)
+            crop, _bbox = crop_yolo_detection(image, yolo_results, expansion=expansion)
 
-        features = encode_image(mobileclip_model, mobileclip_preprocess, device, crop)
-        embedding = embedding_to_list(features)
+            features = encode_image(
+                mobileclip_model, mobileclip_preprocess, device, crop, fp16=fp16
+            )
+            embedding = embedding_to_list(features)
 
-        record = {
-            "image": os.path.basename(image_path),
-            "objectID": object_id,
-            "label": label,
-            "embedding": embedding,
-        }
+            record = {
+                "image": os.path.basename(image_path),
+                "objectID": object_id,
+                "label": label,
+                "embedding": embedding,
+            }
+
+        except Exception as e:
+            failures.append({"image": image_path, "error": repr(e)})
+            print(f"ERROR {image_path}: {e!r}")
+            continue
 
         batch_id = extract_batch_id(image_path)
         batch_results.setdefault(batch_id, []).append(record)
 
-        print(f"Processed {image_path} -> label={label}")
+        if i % CHECKPOINT_EVERY == 0 or i == len(image_paths):
+            print(f"{i}/{len(image_paths)} processed ({len(failures)} failed)")
+            if output_dir:
+                save_batch_results(batch_results, output_dir)
 
-    return batch_results
+    if failures and output_dir:
+        with open(os.path.join(output_dir, "failures.json"), "w", encoding="utf-8") as f:
+            json.dump(failures, f, indent=2)
+        print(f"WARNING: {len(failures)}/{len(image_paths)} images failed - see failures.json")
+
+    return batch_results, failures
 
 
 def save_batch_results(batch_results: dict, output_dir: str) -> None:
@@ -104,6 +133,11 @@ def parse_args():
     parser.add_argument(
         "--max-images", type=int, default=-1, help="-1 processes every image in the manifest"
     )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Run YOLO/MobileCLIP in fp16 on GPU for faster inference (no effect on CPU)",
+    )
 
     return parser.parse_args()
 
@@ -116,12 +150,12 @@ def main():
     yolo_path = extract_yolo_weights(args.yolo_tar) if args.yolo_tar else args.yolo
 
     device = get_device()
-    yolo_model = load_yolo(yolo_path, device=device)
+    yolo_model = load_yolo(yolo_path, device=device, fp16=args.fp16)
     mobileclip_model, preprocess, _tokenizer, device = load_mobileclip(
-        args.mobileclip, device=device
+        args.mobileclip, device=device, fp16=args.fp16
     )
 
-    batch_results = process_manifest(
+    process_manifest(
         manifest_path=args.manifest,
         label_map_path=args.label_map,
         yolo_model=yolo_model,
@@ -129,9 +163,9 @@ def main():
         mobileclip_preprocess=preprocess,
         device=device,
         max_images=args.max_images,
+        fp16=args.fp16,
+        output_dir=args.output_dir,
     )
-
-    save_batch_results(batch_results, args.output_dir)
 
 
 if __name__ == "__main__":
