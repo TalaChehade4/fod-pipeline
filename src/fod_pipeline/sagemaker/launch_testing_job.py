@@ -88,7 +88,7 @@ def main():
         "--mobileclip", f"/opt/ml/processing/input/mobileclip/{mobileclip_filename}",
         "--classifier-weights",
         f"/opt/ml/processing/input/classifier/{classifier_weights_filename}",
-        "--label-encoder", f"/opt/ml/processing/input/classifier/{label_encoder_filename}",
+        "--label-encoder", f"/opt/ml/processing/input/label_encoder/{label_encoder_filename}",
         "--output-dir", "/opt/ml/processing/output",
     ]
 
@@ -120,7 +120,7 @@ def main():
         ),
         ProcessingInput(
             source=args.label_encoder_uri,
-            destination="/opt/ml/processing/input/classifier",
+            destination="/opt/ml/processing/input/label_encoder",
         ),
     ]
 
