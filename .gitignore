@@ -29,10 +29,11 @@ label_map*.json
 object_labels*.json
 embeddings*.json
 
-# Outputs
-outputs/
-PreparedData/
-FinalModel/
+# Outputs (anchored to repo root - see /data/ note above; these are the
+# default --output-dir names the CLIs write to when run locally)
+/outputs/
+/PreparedData/
+/FinalModel/
 *.png
 *.csv
 !tests/**/*.csv
