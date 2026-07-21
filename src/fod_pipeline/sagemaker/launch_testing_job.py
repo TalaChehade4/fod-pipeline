@@ -9,6 +9,7 @@ runs both models per image and compares against both ground truths itself.
 from __future__ import annotations
 
 import argparse
+import os
 
 import sagemaker
 from sagemaker.processing import ProcessingInput, ProcessingOutput
@@ -30,6 +31,14 @@ def parse_args():
     )
     parser.add_argument("--yolo-weights-uri", type=str, required=True)
     parser.add_argument("--mobileclip-weights-uri", type=str, required=True)
+    parser.add_argument(
+        "--mobileclip-mapping-uri",
+        type=str,
+        default=None,
+        help="category_to_objects synonym map (e.g. mobileclip_category_mapping_new.json) - "
+        "required for meaningful Stage 3 accuracy, since MobileCLIP's category vocabulary "
+        "differs from the dataset's ground-truth vocabulary",
+    )
     parser.add_argument("--classifier-weights-uri", type=str, required=True)
     parser.add_argument("--label-encoder-uri", type=str, required=True)
     parser.add_argument("--output-uri", type=str, required=True)
@@ -54,47 +63,78 @@ def main():
         sagemaker_session=sagemaker.Session(),
     )
 
+    # ProcessingInput preserves each S3 object's own filename inside its
+    # destination directory - it does not rename to a fixed name - so the
+    # container-side argument paths must be built from the real basenames,
+    # not assumed generic names like "manifest.json".
+    manifest_filename = os.path.basename(args.manifest_uri)
+    mobileclip_label_map_filename = os.path.basename(args.mobileclip_label_map_uri)
+    classifier_label_map_filename = os.path.basename(args.classifier_label_map_uri)
+    yolo_tar_filename = os.path.basename(args.yolo_weights_uri)
+    mobileclip_filename = os.path.basename(args.mobileclip_weights_uri)
+    classifier_weights_filename = os.path.basename(args.classifier_weights_uri)
+    label_encoder_filename = os.path.basename(args.label_encoder_uri)
+
+    arguments = [
+        "--manifest", f"/opt/ml/processing/input/manifest/{manifest_filename}",
+        "--mobileclip-label-map",
+        f"/opt/ml/processing/input/mobileclip_labels/{mobileclip_label_map_filename}",
+        "--classifier-label-map",
+        f"/opt/ml/processing/input/classifier_labels/{classifier_label_map_filename}",
+        "--yolo-tar", f"/opt/ml/processing/input/yolo/{yolo_tar_filename}",
+        "--mobileclip", f"/opt/ml/processing/input/mobileclip/{mobileclip_filename}",
+        "--classifier-weights",
+        f"/opt/ml/processing/input/classifier/{classifier_weights_filename}",
+        "--label-encoder", f"/opt/ml/processing/input/classifier/{label_encoder_filename}",
+        "--output-dir", "/opt/ml/processing/output",
+    ]
+
+    inputs = [
+        ProcessingInput(
+            source=args.manifest_uri, destination="/opt/ml/processing/input/manifest"
+        ),
+        ProcessingInput(
+            source=args.mobileclip_label_map_uri,
+            destination="/opt/ml/processing/input/mobileclip_labels",
+        ),
+        ProcessingInput(
+            source=args.classifier_label_map_uri,
+            destination="/opt/ml/processing/input/classifier_labels",
+        ),
+        ProcessingInput(
+            source=args.yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
+        ),
+        ProcessingInput(
+            source=args.mobileclip_weights_uri,
+            destination="/opt/ml/processing/input/mobileclip",
+        ),
+        ProcessingInput(
+            source=args.classifier_weights_uri,
+            destination="/opt/ml/processing/input/classifier",
+        ),
+        ProcessingInput(
+            source=args.label_encoder_uri,
+            destination="/opt/ml/processing/input/classifier",
+        ),
+    ]
+
+    if args.mobileclip_mapping_uri:
+        mapping_filename = os.path.basename(args.mobileclip_mapping_uri)
+        arguments += [
+            "--mobileclip-mapping", f"/opt/ml/processing/input/mapping/{mapping_filename}"
+        ]
+        inputs.append(
+            ProcessingInput(
+                source=args.mobileclip_mapping_uri,
+                destination="/opt/ml/processing/input/mapping",
+            )
+        )
+
     processor.run(
         code=str(FOD_PIPELINE_PACKAGE / "pipeline" / "evaluate.py"),
         dependencies=package_dependencies(),
-        arguments=[
-            "--manifest", "/opt/ml/processing/input/manifest/manifest.json",
-            "--mobileclip-label-map", "/opt/ml/processing/input/mobileclip_labels/label_map.json",
-            "--classifier-label-map", "/opt/ml/processing/input/classifier_labels/label_map.json",
-            "--yolo-tar", "/opt/ml/processing/input/yolo/model.tar.gz",
-            "--mobileclip", "/opt/ml/processing/input/mobileclip/mobileclip_s0.pt",
-            "--classifier-weights", "/opt/ml/processing/input/classifier/model.pth",
-            "--label-encoder", "/opt/ml/processing/input/classifier/label_encoder.json",
-            "--output-dir", "/opt/ml/processing/output",
-        ],
-        inputs=[
-            ProcessingInput(
-                source=args.manifest_uri, destination="/opt/ml/processing/input/manifest"
-            ),
-            ProcessingInput(
-                source=args.mobileclip_label_map_uri,
-                destination="/opt/ml/processing/input/mobileclip_labels",
-            ),
-            ProcessingInput(
-                source=args.classifier_label_map_uri,
-                destination="/opt/ml/processing/input/classifier_labels",
-            ),
-            ProcessingInput(
-                source=args.yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
-            ),
-            ProcessingInput(
-                source=args.mobileclip_weights_uri,
-                destination="/opt/ml/processing/input/mobileclip",
-            ),
-            ProcessingInput(
-                source=args.classifier_weights_uri,
-                destination="/opt/ml/processing/input/classifier",
-            ),
-            ProcessingInput(
-                source=args.label_encoder_uri,
-                destination="/opt/ml/processing/input/classifier",
-            ),
-        ],
+        arguments=arguments,
+        inputs=inputs,
         outputs=[
             ProcessingOutput(source="/opt/ml/processing/output", destination=args.output_uri),
         ],

@@ -9,6 +9,7 @@ against different S3 paths.
 from __future__ import annotations
 
 import argparse
+import os
 
 import sagemaker
 from sagemaker.processing import ProcessingInput, ProcessingOutput
@@ -48,14 +49,23 @@ def main():
         sagemaker_session=sagemaker.Session(),
     )
 
+    # ProcessingInput preserves each S3 object's own filename inside its
+    # destination directory - it does not rename to a fixed name - so the
+    # container-side argument paths must be built from the real basenames,
+    # not assumed generic names like "manifest.json".
+    manifest_filename = os.path.basename(args.manifest_uri)
+    label_map_filename = os.path.basename(args.label_map_uri)
+    yolo_tar_filename = os.path.basename(args.yolo_weights_uri)
+    mobileclip_filename = os.path.basename(args.mobileclip_weights_uri)
+
     processor.run(
         code=str(FOD_PIPELINE_PACKAGE / "pipeline" / "preprocess.py"),
         dependencies=package_dependencies(),
         arguments=[
-            "--manifest", "/opt/ml/processing/input/manifest/manifest.json",
-            "--label-map", "/opt/ml/processing/input/labels/label_map.json",
-            "--yolo-tar", "/opt/ml/processing/input/yolo/model.tar.gz",
-            "--mobileclip", "/opt/ml/processing/input/mobileclip/mobileclip_s0.pt",
+            "--manifest", f"/opt/ml/processing/input/manifest/{manifest_filename}",
+            "--label-map", f"/opt/ml/processing/input/labels/{label_map_filename}",
+            "--yolo-tar", f"/opt/ml/processing/input/yolo/{yolo_tar_filename}",
+            "--mobileclip", f"/opt/ml/processing/input/mobileclip/{mobileclip_filename}",
             "--output-dir", "/opt/ml/processing/output",
             "--max-images", str(args.max_images),
         ],
