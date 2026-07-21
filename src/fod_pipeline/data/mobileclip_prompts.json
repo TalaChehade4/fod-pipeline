@@ -1,0 +1,30 @@
+{
+  "categories": [
+    "Allen key", "Battery", "Boarding pass", "Bolt", "Bottle cap", "Bug",
+    "Bullet", "Bullet casing", "Cargo label", "Chain", "Coin", "Cutlery",
+    "Deepsocket", "Electrical wire", "Face mask", "Feather", "Glove",
+    "Headset", "Invoice paper", "Key", "Leaf", "Light bulb", "Light fixture",
+    "Lighter", "Luggage lock", "Luggage tag", "Luggage wheel", "Lug nut",
+    "Medication", "Metal pipe", "Metal rod", "Oring", "Paint brush",
+    "Paper note", "Patch", "Pen", "Plastic bottle", "Plastic container",
+    "Plier", "Plug", "PVC pipe", "Rock", "Pebble", "Stone", "Rubber chunk",
+    "Ruler", "Screw", "Screwdriver", "Spring", "Strap", "Sunglasses",
+    "Tire chunk", "Twig", "Vegetation", "Watch", "Wood", "Pill",
+    "Caster wheel", "Plastic strap", "Broken plastic container",
+    "Broken glass", "Paper", "Metal chunks", "Piece of metal",
+    "Blister pack", "Piece of glass", "Piece of plastic", "Piece of paper",
+    "Gas lighter", "Stick", "Safety pin and cover", "Safety card", "Wrench",
+    "Paper container", "Paper package", "Nut", "Hydraulic lines",
+    "Hydraulic hose", "Hose", "Fuel cap", "Zip tie", "Rubber washer"
+  ],
+  "templates": [
+    "a close-up inspection image of a {}",
+    "a {} found on an airport runway",
+    "foreign object debris: {}",
+    "an industrial maintenance photo of a {}",
+    "a technical inspection showing a {}",
+    "a macro shot of a {}",
+    "a {} on metal surface",
+    "a workshop photo of a {}"
+  ]
+}

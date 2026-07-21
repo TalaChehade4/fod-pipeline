@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fod-pipeline"
+version = "0.1.0"
+description = "FOD (foreign object debris) recognition pipeline: YOLO detection + MobileCLIP embedding + MLP classifier + hybrid evaluation."
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+
+dependencies = [
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "torchaudio==2.8.0",
+    "ultralytics",
+    "mobileclip @ git+https://github.com/apple/ml-mobileclip.git",
+    "open_clip_torch",
+    "huggingface_hub",
+    "boto3",
+    "numpy",
+    "pandas",
+    "Pillow",
+    "opencv-python",
+    "scikit-learn==1.5.2",
+    "matplotlib==3.9.2",
+    "tqdm",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+sagemaker = ["sagemaker"]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+fod-preprocess = "fod_pipeline.pipeline.preprocess:main"
+fod-prepare = "fod_pipeline.classifier.prepare:main"
+fod-train = "fod_pipeline.classifier.train:main"
+fod-evaluate = "fod_pipeline.pipeline.evaluate:main"
+fod-infer = "fod_pipeline.pipeline.infer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"fod_pipeline.data" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

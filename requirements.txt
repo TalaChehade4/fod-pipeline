@@ -1,0 +1,22 @@
+# Mirrors pyproject.toml's [project.dependencies].
+#
+# This file exists only because SageMaker's ProcessingJob/Estimator
+# `dependencies=[...]` mechanism specifically pip-installs a file literally
+# named requirements.txt inside the job container - it does not understand
+# pyproject.toml. Keep the two in sync; pyproject.toml is the source of truth.
+torch==2.8.0
+torchvision==0.23.0
+torchaudio==2.8.0
+ultralytics
+git+https://github.com/apple/ml-mobileclip.git
+open_clip_torch
+huggingface_hub
+boto3
+numpy
+pandas
+Pillow
+opencv-python
+scikit-learn==1.5.2
+matplotlib==3.9.2
+tqdm
+python-dotenv

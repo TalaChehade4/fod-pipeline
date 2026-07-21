@@ -1,0 +1,43 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+
+# Data & model artifacts (business/proprietary — never commit)
+# Anchored to repo root so it doesn't also match src/fod_pipeline/data/,
+# the bundled MobileCLIP prompt resource that ships with the package.
+/data/
+*.manifest
+*.pt
+*.pth
+*.tar.gz
+join-config*.json
+*_old.csv
+label_map*.json
+object_labels*.json
+embeddings*.json
+
+# Outputs
+outputs/
+PreparedData/
+FinalModel/
+*.png
+*.csv
+!tests/**/*.csv
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
