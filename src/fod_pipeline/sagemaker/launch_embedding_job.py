@@ -41,7 +41,7 @@ def main():
 
     processor = PyTorchProcessor(
         framework_version="2.8",
-        py_version="py311",
+        py_version="py312",
         role=config.sagemaker_role_arn,
         instance_type=config.embedding_instance_type,
         instance_count=1,
