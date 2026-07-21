@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "fod-pipeline"
 version = "0.1.0"
 description = "FOD (foreign object debris) recognition pipeline: YOLO detection + MobileCLIP embedding + MLP classifier + hybrid evaluation."
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
 
