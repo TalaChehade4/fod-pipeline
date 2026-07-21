@@ -43,6 +43,9 @@ def parse_args():
     parser.add_argument("--label-encoder-uri", type=str, required=True)
     parser.add_argument("--output-uri", type=str, required=True)
     parser.add_argument("--job-name", type=str, default="fod-hybrid-evaluation")
+    parser.add_argument(
+        "--fp16", action="store_true", help="Run YOLO/MobileCLIP in fp16 on the GPU instance"
+    )
 
     return parser.parse_args()
 
@@ -88,6 +91,9 @@ def main():
         "--label-encoder", f"/opt/ml/processing/input/classifier/{label_encoder_filename}",
         "--output-dir", "/opt/ml/processing/output",
     ]
+
+    if args.fp16:
+        arguments.append("--fp16")
 
     inputs = [
         ProcessingInput(
