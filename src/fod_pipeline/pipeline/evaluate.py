@@ -20,7 +20,7 @@ import json
 import os
 
 from fod_pipeline.core.detection import extract_yolo_weights
-from fod_pipeline.core.labels import load_label_map
+from fod_pipeline.core.labels import canonical_label, load_label_map
 from fod_pipeline.core.s3_io import extract_object_id, load_image_from_s3, load_manifest
 from fod_pipeline.hybrid.metrics import build_metrics_report
 from fod_pipeline.pipeline.infer import build_pipeline
@@ -31,6 +31,7 @@ def evaluate_manifest(
     manifest_path: str,
     mobileclip_label_map_path: str,
     classifier_label_map_path: str,
+    max_images: int = -1,
 ) -> list:
     """Run the hybrid pipeline over every image in a manifest, pairing each
     prediction with its dual ground truth.
@@ -42,11 +43,19 @@ def evaluate_manifest(
 
     prefix, image_paths = load_manifest(manifest_path)
 
+    if max_images != -1:
+        image_paths = image_paths[:max_images]
+
     records = []
 
     for i, image_path in enumerate(image_paths, start=1):
         object_id = extract_object_id(image_path)
-        mobileclip_gt = mobileclip_labels.get(object_id, "UNKNOWN")
+        # Same synonym mapping the pipeline applies to its own MobileCLIP
+        # predictions, so both sides of the Ground Truth A comparison land
+        # in the same vocabulary (see HybridPipeline.predict).
+        mobileclip_gt = canonical_label(
+            mobileclip_labels.get(object_id, "UNKNOWN"), pipeline.mobileclip_synonym_mapping
+        )
         classifier_gt = classifier_labels.get(object_id, "UNKNOWN")
 
         image = load_image_from_s3(prefix + image_path)
@@ -130,9 +139,19 @@ def parse_args():
     parser.add_argument("--mobileclip", type=str, required=True)
     parser.add_argument("--mobileclip-model-name", type=str, default="mobileclip_s0")
     parser.add_argument("--prompts", type=str, default=None)
+    parser.add_argument(
+        "--mobileclip-mapping",
+        type=str,
+        default=None,
+        help="category_to_objects synonym map translating MobileCLIP's category "
+        "vocabulary into the dataset's ground-truth vocabulary",
+    )
     parser.add_argument("--classifier-weights", type=str, required=True)
     parser.add_argument("--label-encoder", type=str, required=True)
     parser.add_argument("--output-dir", type=str, default="evaluation-results")
+    parser.add_argument(
+        "--max-images", type=int, default=-1, help="-1 evaluates every image in the manifest"
+    )
 
     return parser.parse_args()
 
@@ -149,6 +168,7 @@ def main():
         label_encoder_path=args.label_encoder,
         mobileclip_model_name=args.mobileclip_model_name,
         prompts_path=args.prompts,
+        mobileclip_mapping_path=args.mobileclip_mapping,
     )
 
     records = evaluate_manifest(
@@ -156,6 +176,7 @@ def main():
         manifest_path=args.manifest,
         mobileclip_label_map_path=args.mobileclip_label_map,
         classifier_label_map_path=args.classifier_label_map,
+        max_images=args.max_images,
     )
 
     classifier_y_true, classifier_y_pred = classifier_label_arrays(

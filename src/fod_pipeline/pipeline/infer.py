@@ -25,6 +25,7 @@ from fod_pipeline.core.embedding import (
     score_text_prompts,
     topk_predictions,
 )
+from fod_pipeline.core.labels import canonical_label, load_synonym_mapping
 from fod_pipeline.core.prompts import load_prompt_config
 
 
@@ -58,6 +59,7 @@ class HybridPipeline:
         classifier_class_names,
         device,
         crop_expansion: float = DEFAULT_EXPANSION,
+        mobileclip_synonym_mapping: dict | None = None,
     ):
         self.yolo_model = yolo_model
         self.mobileclip_model = mobileclip_model
@@ -68,6 +70,12 @@ class HybridPipeline:
         self.classifier_class_names = classifier_class_names
         self.device = device
         self.crop_expansion = crop_expansion
+        # MobileCLIP's own category vocabulary (e.g. "Bolt") often differs
+        # from the dataset's ground-truth vocabulary (e.g. "Bolts") - this
+        # maps predictions into the ground-truth vocabulary so comparisons
+        # against Ground Truth A are meaningful. Empty mapping still
+        # normalizes case/whitespace via canonical_label.
+        self.mobileclip_synonym_mapping = mobileclip_synonym_mapping or {}
 
     def predict(self, image: Image.Image) -> HybridPrediction:
         pipeline_start = time.perf_counter()
@@ -88,6 +96,8 @@ class HybridPipeline:
         (top1, top2), _scores = topk_predictions(
             similarity, self.mobileclip_categories, k=2
         )
+        top1 = canonical_label(top1, self.mobileclip_synonym_mapping)
+        top2 = canonical_label(top2, self.mobileclip_synonym_mapping)
         mobileclip_ms = (time.perf_counter() - mobileclip_start) * 1000
 
         classifier_start = time.perf_counter()
@@ -117,6 +127,7 @@ def build_pipeline(
     label_encoder_path: str,
     mobileclip_model_name: str = "mobileclip_s0",
     prompts_path: str | None = None,
+    mobileclip_mapping_path: str | None = None,
 ) -> HybridPipeline:
     device = get_device()
 
@@ -139,6 +150,10 @@ def build_pipeline(
     )
     classifier_model.eval()
 
+    mobileclip_synonym_mapping = (
+        load_synonym_mapping(mobileclip_mapping_path) if mobileclip_mapping_path else {}
+    )
+
     return HybridPipeline(
         yolo_model=yolo_model,
         mobileclip_model=mobileclip_model,
@@ -148,6 +163,7 @@ def build_pipeline(
         classifier_model=classifier_model,
         classifier_class_names=class_names,
         device=device,
+        mobileclip_synonym_mapping=mobileclip_synonym_mapping,
     )
 
 
@@ -160,6 +176,13 @@ def parse_args():
     parser.add_argument("--mobileclip-model-name", type=str, default="mobileclip_s0")
     parser.add_argument(
         "--prompts", type=str, default=None, help="Override the bundled category/prompt JSON"
+    )
+    parser.add_argument(
+        "--mobileclip-mapping",
+        type=str,
+        default=None,
+        help="category_to_objects synonym map (e.g. mobileclip_category_mapping_new.json) "
+        "translating MobileCLIP's category vocabulary into the dataset's ground-truth vocabulary",
     )
     parser.add_argument("--classifier-weights", type=str, required=True)
     parser.add_argument("--label-encoder", type=str, required=True)
@@ -177,6 +200,7 @@ def main():
         label_encoder_path=args.label_encoder,
         mobileclip_model_name=args.mobileclip_model_name,
         prompts_path=args.prompts,
+        mobileclip_mapping_path=args.mobileclip_mapping,
     )
 
     image = Image.open(args.image).convert("RGB")
