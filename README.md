@@ -25,6 +25,14 @@ Each stage's code lives under `src/fod_pipeline/`:
 | `pipeline/` | orchestration: `preprocess` (Stage 1+2), `infer` (local forward pass), `evaluate` (Stage 4/5 hybrid report) |
 | `sagemaker/` | job launch scripts for running the above on AWS SageMaker |
 
+
+## Clone repository
+
+```bash
+git clone https://github.com/TalaChehade4/fod-pipeline.git
+cd fod-pipeline
+```
+
 ## Install locally
 
 ```bash
