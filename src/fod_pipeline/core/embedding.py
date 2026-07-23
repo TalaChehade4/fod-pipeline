@@ -24,8 +24,7 @@ def load_mobileclip(
 
     fp16 halves the model for faster GPU inference. LayerNorm modules are
     kept in float32 - MobileCLIP's text-encoder LayerNorm needs float32
-    internally, and F.layer_norm otherwise raises "expected scalar type
-    Float but found Half" mid-forward-pass.
+    internally.
     """
     device = device or get_device()
 
@@ -52,7 +51,19 @@ def encode_image(
     model, preprocess, device, image, fp16: bool = False, normalize: bool = False
 ) -> torch.Tensor:
     """Encode a single PIL image to its MobileCLIP feature vector, shape (1, 512)."""
-    image_tensor = preprocess(image).unsqueeze(0).to(device)
+    return encode_images(model, preprocess, device, [image], fp16=fp16, normalize=normalize)
+
+
+@torch.inference_mode()
+def encode_images(
+    model, preprocess, device, images: Sequence, fp16: bool = False, normalize: bool = False
+) -> torch.Tensor:
+    """Encode a batch of PIL images to their MobileCLIP feature vectors, shape (N, 512).
+
+    One forward pass over a batch is substantially faster than calling
+    encode_image per-image, especially on GPU.
+    """
+    image_tensor = torch.stack([preprocess(image) for image in images]).to(device)
 
     if fp16 and device.type == "cuda":
         image_tensor = image_tensor.half()
@@ -69,6 +80,11 @@ def embedding_to_list(features: torch.Tensor) -> list:
     """Convert a (1, D) or (D,) feature tensor to a JSON-serializable list."""
     if features.dim() > 1:
         features = features.squeeze(0)
+    return features.detach().cpu().float().numpy().tolist()
+
+
+def embeddings_to_list(features: torch.Tensor) -> list:
+    """Convert a (N, D) batch feature tensor to a list of JSON-serializable embeddings."""
     return features.detach().cpu().float().numpy().tolist()
 
 

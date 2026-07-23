@@ -1,15 +1,4 @@
 """Object-ID -> label resolution: manifest parsing, join-config lookup, CSV fallback.
-
-Consolidates what used to be three near-duplicate scripts
-(build_objectid_label_map.py, build_object_labels_for_mobileclip.py,
-map_labels.py) into shared building blocks, plus the reverse-mapping step
-(ReverseMapping.py) and the MobileCLIP synonym-mapping step
-(canonical_label / mobileclip_category_mapping_new.json) from MobileCLIP_Alone.
-
-Two label-map shapes appear on disk in this project:
-  - a flat dict   {object_id: label}                  (e.g. Label_map.json)
-  - a record list [{"object_id": ..., "name": ...}]    (e.g. object_labels.json)
-load_label_map() accepts either.
 """
 from __future__ import annotations
 

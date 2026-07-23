@@ -23,12 +23,31 @@ def get_s3_client():
     return boto3.client("s3")
 
 
+def is_s3_uri(path: str) -> bool:
+    return path.startswith("s3://")
+
+
+def _bucket_and_key(s3_uri: str) -> tuple:
+    parsed = urlparse(s3_uri)
+    return parsed.netloc, parsed.path.lstrip("/")
+
+
+def download_from_s3(s3_uri: str, local_path: str, s3_client=None) -> None:
+    s3_client = s3_client or get_s3_client()
+    bucket, key = _bucket_and_key(s3_uri)
+    s3_client.download_file(bucket, key, local_path)
+
+
+def upload_to_s3(local_path: str, s3_uri: str, s3_client=None) -> None:
+    s3_client = s3_client or get_s3_client()
+    bucket, key = _bucket_and_key(s3_uri)
+    s3_client.upload_file(local_path, bucket, key)
+
+
 def load_image_from_s3(s3_uri: str, s3_client=None) -> Image.Image:
     s3_client = s3_client or get_s3_client()
 
-    parsed = urlparse(s3_uri)
-    bucket = parsed.netloc
-    key = parsed.path.lstrip("/")
+    bucket, key = _bucket_and_key(s3_uri)
 
     response = s3_client.get_object(Bucket=bucket, Key=key)
 

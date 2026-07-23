@@ -1,9 +1,4 @@
 """Stage 1+2 orchestration: manifest -> YOLO crop -> MobileCLIP embed -> per-batch JSON.
-
-Replaces the three duplicated Process.py/Processing.py scripts previously
-used for preparing classifier training data, classifier test data, and
-MobileCLIP standalone evaluation data - one function, parameterized by
-which manifest/label-map/output-dir are passed in.
 """
 from __future__ import annotations
 
@@ -20,7 +15,7 @@ from fod_pipeline.core.detection import (
     load_yolo,
 )
 from fod_pipeline.core.device import get_device
-from fod_pipeline.core.embedding import embedding_to_list, encode_image, load_mobileclip
+from fod_pipeline.core.embedding import embeddings_to_list, encode_images, load_mobileclip
 from fod_pipeline.core.labels import load_label_map
 from fod_pipeline.core.s3_io import (
     extract_batch_id,
@@ -31,6 +26,7 @@ from fod_pipeline.core.s3_io import (
 
 
 CHECKPOINT_EVERY = 200
+DEFAULT_EMBED_BATCH_SIZE = 64
 
 
 def process_manifest(
@@ -44,8 +40,13 @@ def process_manifest(
     max_images: int = -1,
     fp16: bool = False,
     output_dir: str | None = None,
+    embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
 ) -> tuple:
     """Run Stage 1+2 over every image in a manifest.
+
+    YOLO detection/cropping still runs one image at a time, but the cropped
+    detections are buffered and pushed through MobileCLIP embed_batch_size
+    at a time - one batched forward pass is much faster than one per image.
 
     A single image's failure (corrupt file, transient S3 error, unexpected
     filename) is logged and skipped rather than aborting the whole run. If
@@ -66,6 +67,26 @@ def process_manifest(
     batch_results = {}
     failures = []
 
+    pending_crops = []
+    pending_records = []
+
+    def flush_pending():
+        if not pending_crops:
+            return
+
+        features = encode_images(
+            mobileclip_model, mobileclip_preprocess, device, pending_crops, fp16=fp16
+        )
+        embeddings = embeddings_to_list(features)
+
+        for (record, image_path), embedding in zip(pending_records, embeddings):
+            record["embedding"] = embedding
+            batch_id = extract_batch_id(image_path)
+            batch_results.setdefault(batch_id, []).append(record)
+
+        pending_crops.clear()
+        pending_records.clear()
+
     for i, image_path in enumerate(image_paths, start=1):
         try:
             object_id = extract_object_id(image_path)
@@ -76,30 +97,29 @@ def process_manifest(
             yolo_results = yolo_model(image)
             crop, _bbox = crop_yolo_detection(image, yolo_results, expansion=expansion)
 
-            features = encode_image(
-                mobileclip_model, mobileclip_preprocess, device, crop, fp16=fp16
-            )
-            embedding = embedding_to_list(features)
-
             record = {
                 "image": os.path.basename(image_path),
                 "objectID": object_id,
                 "label": label,
-                "embedding": embedding,
             }
+            pending_crops.append(crop)
+            pending_records.append((record, image_path))
 
         except Exception as e:
             failures.append({"image": image_path, "error": repr(e)})
             print(f"ERROR {image_path}: {e!r}")
             continue
 
-        batch_id = extract_batch_id(image_path)
-        batch_results.setdefault(batch_id, []).append(record)
+        if len(pending_crops) >= embed_batch_size:
+            flush_pending()
 
         if i % CHECKPOINT_EVERY == 0 or i == len(image_paths):
+            flush_pending()
             print(f"{i}/{len(image_paths)} processed ({len(failures)} failed)")
             if output_dir:
                 save_batch_results(batch_results, output_dir)
+
+    flush_pending()
 
     if failures and output_dir:
         with open(os.path.join(output_dir, "failures.json"), "w", encoding="utf-8") as f:
@@ -134,6 +154,12 @@ def parse_args():
         "--max-images", type=int, default=-1, help="-1 processes every image in the manifest"
     )
     parser.add_argument(
+        "--embed-batch-size",
+        type=int,
+        default=DEFAULT_EMBED_BATCH_SIZE,
+        help="Number of cropped detections encoded per MobileCLIP forward pass",
+    )
+    parser.add_argument(
         "--fp16",
         action="store_true",
         help="Run YOLO/MobileCLIP in fp16 on GPU for faster inference (no effect on CPU)",
@@ -165,6 +191,7 @@ def main():
         max_images=args.max_images,
         fp16=args.fp16,
         output_dir=args.output_dir,
+        embed_batch_size=args.embed_batch_size,
     )
 
 

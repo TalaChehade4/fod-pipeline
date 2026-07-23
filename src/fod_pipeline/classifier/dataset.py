@@ -1,6 +1,6 @@
 """Classifier data preparation: load embeddings, encode labels, split, class weights.
 
-Default split is 90/10 train/validation (project decision - previously 80/20).
+Default split is 90/10 train/validation
 """
 from __future__ import annotations
 

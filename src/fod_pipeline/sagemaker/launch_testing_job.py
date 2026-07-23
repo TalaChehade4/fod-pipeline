@@ -22,15 +22,39 @@ from fod_pipeline.sagemaker._common import FOD_PIPELINE_PACKAGE, package_depende
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--manifest-uri", type=str, required=True)
     parser.add_argument(
-        "--mobileclip-label-map-uri", type=str, required=True, help="Ground Truth A"
+        "--manifest-uri",
+        type=str,
+        default=None,
+        help="Defaults to manifests/test_manifest.json under S3_PROJECT_PREFIX if omitted.",
     )
     parser.add_argument(
-        "--classifier-label-map-uri", type=str, required=True, help="Ground Truth B"
+        "--mobileclip-label-map-uri",
+        type=str,
+        default=None,
+        help="Ground Truth A. Defaults to manifests/test_mobileclip_label_map.json under "
+        "S3_PROJECT_PREFIX if omitted.",
     )
-    parser.add_argument("--yolo-weights-uri", type=str, required=True)
-    parser.add_argument("--mobileclip-weights-uri", type=str, required=True)
+    parser.add_argument(
+        "--classifier-label-map-uri",
+        type=str,
+        default=None,
+        help="Ground Truth B. Defaults to manifests/test_label_map.json under "
+        "S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--yolo-weights-uri",
+        type=str,
+        default=None,
+        help="Defaults to the weights/yolo/model.tar.gz path under S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--mobileclip-weights-uri",
+        type=str,
+        default=None,
+        help="Defaults to the weights/mobileclip/mobileclip_s0.pt path under "
+        "S3_PROJECT_PREFIX if omitted.",
+    )
     parser.add_argument(
         "--mobileclip-mapping-uri",
         type=str,
@@ -41,10 +65,22 @@ def parse_args():
     )
     parser.add_argument("--classifier-weights-uri", type=str, required=True)
     parser.add_argument("--label-encoder-uri", type=str, required=True)
-    parser.add_argument("--output-uri", type=str, required=True)
+    parser.add_argument(
+        "--output-uri",
+        type=str,
+        default=None,
+        help="Defaults to hybrid-results under S3_PROJECT_PREFIX if omitted.",
+    )
     parser.add_argument("--job-name", type=str, default="fod-hybrid-evaluation")
     parser.add_argument(
         "--fp16", action="store_true", help="Run YOLO/MobileCLIP in fp16 on the GPU instance"
+    )
+    parser.add_argument(
+        "--classifier-fallback",
+        action="store_true",
+        help="Experimental: when MobileCLIP's top-1/top-2 miss Ground Truth A, also "
+        "accept a match against Ground Truth B (classifier_gt) before calling it "
+        "wrong. Off by default - does not change existing behavior.",
     )
 
     return parser.parse_args()
@@ -55,6 +91,17 @@ def main():
 
     config = get_config()
     require_sagemaker_config(config)
+
+    manifest_uri = args.manifest_uri or config.s3.manifest("test")
+    mobileclip_label_map_uri = (
+        args.mobileclip_label_map_uri or config.s3.mobileclip_label_map("test")
+    )
+    classifier_label_map_uri = (
+        args.classifier_label_map_uri or config.s3.label_map("test")
+    )
+    yolo_weights_uri = args.yolo_weights_uri or config.s3.yolo_weights_tar
+    mobileclip_weights_uri = args.mobileclip_weights_uri or config.s3.mobileclip_weights
+    output_uri = args.output_uri or config.s3.hybrid_results
 
     processor = PyTorchProcessor(
         framework_version="2.8",
@@ -70,11 +117,11 @@ def main():
     # destination directory - it does not rename to a fixed name - so the
     # container-side argument paths must be built from the real basenames,
     # not assumed generic names like "manifest.json".
-    manifest_filename = os.path.basename(args.manifest_uri)
-    mobileclip_label_map_filename = os.path.basename(args.mobileclip_label_map_uri)
-    classifier_label_map_filename = os.path.basename(args.classifier_label_map_uri)
-    yolo_tar_filename = os.path.basename(args.yolo_weights_uri)
-    mobileclip_filename = os.path.basename(args.mobileclip_weights_uri)
+    manifest_filename = os.path.basename(manifest_uri)
+    mobileclip_label_map_filename = os.path.basename(mobileclip_label_map_uri)
+    classifier_label_map_filename = os.path.basename(classifier_label_map_uri)
+    yolo_tar_filename = os.path.basename(yolo_weights_uri)
+    mobileclip_filename = os.path.basename(mobileclip_weights_uri)
     classifier_weights_filename = os.path.basename(args.classifier_weights_uri)
     label_encoder_filename = os.path.basename(args.label_encoder_uri)
 
@@ -95,23 +142,26 @@ def main():
     if args.fp16:
         arguments.append("--fp16")
 
+    if args.classifier_fallback:
+        arguments.append("--classifier-fallback")
+
     inputs = [
         ProcessingInput(
-            source=args.manifest_uri, destination="/opt/ml/processing/input/manifest"
+            source=manifest_uri, destination="/opt/ml/processing/input/manifest"
         ),
         ProcessingInput(
-            source=args.mobileclip_label_map_uri,
+            source=mobileclip_label_map_uri,
             destination="/opt/ml/processing/input/mobileclip_labels",
         ),
         ProcessingInput(
-            source=args.classifier_label_map_uri,
+            source=classifier_label_map_uri,
             destination="/opt/ml/processing/input/classifier_labels",
         ),
         ProcessingInput(
-            source=args.yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
+            source=yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
         ),
         ProcessingInput(
-            source=args.mobileclip_weights_uri,
+            source=mobileclip_weights_uri,
             destination="/opt/ml/processing/input/mobileclip",
         ),
         ProcessingInput(
@@ -142,7 +192,7 @@ def main():
         arguments=arguments,
         inputs=inputs,
         outputs=[
-            ProcessingOutput(source="/opt/ml/processing/output", destination=args.output_uri),
+            ProcessingOutput(source="/opt/ml/processing/output", destination=output_uri),
         ],
     )
 

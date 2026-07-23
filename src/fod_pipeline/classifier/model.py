@@ -1,8 +1,6 @@
 """Stage 4 classifier architecture.
 
-Only MLP2 ships to production. Linear and MLP1 were evaluated during
-development (see the archived comparison in TestingClassifier/) but MLP2
-outperformed both, so it is the only architecture trained and served here.
+Only MLP ships to production.
 """
 from __future__ import annotations
 

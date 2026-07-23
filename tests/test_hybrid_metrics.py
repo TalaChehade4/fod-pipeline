@@ -6,6 +6,7 @@ from fod_pipeline.hybrid.metrics import (
     compute_mobileclip_metrics,
     correct_source,
     is_hybrid_correct,
+    mobileclip_correct,
 )
 
 
@@ -88,3 +89,46 @@ def test_build_metrics_report_omits_classifier_section_when_arrays_missing():
     report = build_metrics_report(records)
 
     assert "classifier" not in report
+
+
+def test_classifier_fallback_off_by_default_preserves_strict_behavior():
+    # MobileCLIP ground truth was split ("bullet" vs "bullet casings") but the
+    # classifier's ground truth still has the joined "bullet" label.
+    r = _record("bullet casings", "bullet", "shell", "bullet", "bullet")
+
+    assert mobileclip_correct(r) is False
+    assert is_hybrid_correct(r) is True  # still correct via the classifier side
+    assert correct_source(r) == "classifier_only"
+
+
+def test_classifier_fallback_recovers_recently_split_classes():
+    # bullet vs. bullet casings, and manufactured wood vs. wood: both used to
+    # be one joined class, so MobileCLIP's prediction still lands on the
+    # coarser classifier_gt label even though it now misses the finer
+    # mobileclip_gt split.
+    bullet = _record("bullet casings", "bullet", "shell", "bullet", "bullet")
+    wood = _record("manufactured wood", "wood", "metal", "wood", "wood")
+
+    assert mobileclip_correct(bullet, classifier_fallback=True) is True
+    assert mobileclip_correct(wood, classifier_fallback=True) is True
+
+
+def test_classifier_fallback_does_not_resolve_classes_split_on_both_sides():
+    # rubber chunks vs. tire chunks is split in classifier_gt too (true label
+    # is "tire chunks" on both sides), so the fallback has nothing to recover
+    # against when MobileCLIP predicts the sibling class "rubber chunks".
+    r = _record("tire chunks", "rubber chunks", "plastic", "tire chunks", "tire chunks")
+
+    assert mobileclip_correct(r, classifier_fallback=True) is False
+
+
+def test_classifier_fallback_normalizes_classifier_gt_before_comparing():
+    # mobileclip_top1/top2 are already lowercase/underscore-normalized
+    # (see HybridPipeline.predict); classifier_gt is raw label-map text and
+    # needs the same normalization to compare fairly.
+    r = _record("Bullet Casings", "bullet", "shell", "Bullet_Casings", "Bullet_Casings")
+
+    assert mobileclip_correct(r, classifier_fallback=True) is False  # still split, unrelated GT
+
+    r2 = _record("Bullet Casings", "bullet", "shell", "Bullet", "Bullet")
+    assert mobileclip_correct(r2, classifier_fallback=True) is True

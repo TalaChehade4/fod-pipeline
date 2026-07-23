@@ -19,10 +19,11 @@ import csv
 import json
 import os
 
+from fod_pipeline.classifier.dataset import load_label_names
 from fod_pipeline.core.detection import extract_yolo_weights
 from fod_pipeline.core.labels import canonical_label, load_label_map
 from fod_pipeline.core.s3_io import extract_object_id, load_image_from_s3, load_manifest
-from fod_pipeline.hybrid.metrics import build_metrics_report
+from fod_pipeline.hybrid.metrics import build_metrics_report, is_hybrid_correct
 from fod_pipeline.pipeline.infer import build_pipeline
 
 RECORD_FIELDS = [
@@ -37,6 +38,7 @@ RECORD_FIELDS = [
     "mobileclip_ms",
     "classifier_ms",
     "pipeline_ms",
+    "hybrid_correct",
 ]
 
 PROGRESS_EVERY = 50
@@ -49,6 +51,7 @@ def evaluate_manifest(
     classifier_label_map_path: str,
     output_dir: str,
     max_images: int = -1,
+    classifier_fallback: bool = False,
 ) -> tuple:
     """Run the hybrid pipeline over every image in a manifest, pairing each
     prediction with its dual ground truth.
@@ -59,6 +62,11 @@ def evaluate_manifest(
     unexpected filename) is logged and skipped rather than aborting the
     whole run - matching the resilience the original MobileCLIP_Alone
     evaluation script had, extended here to the classifier/hybrid path too.
+
+    Each row also gets a hybrid_correct column (the same OR-rule used for
+    the aggregate hybrid_accuracy metric) so individual predictions can be
+    eyeballed directly in predictions.csv without cross-referencing the
+    metrics report.
 
     Returns (records, failures) - records shaped for fod_pipeline.hybrid.metrics.
     """
@@ -108,6 +116,7 @@ def evaluate_manifest(
                     "classifier_ms": prediction.classifier_ms,
                     "pipeline_ms": prediction.pipeline_ms,
                 }
+                record["hybrid_correct"] = is_hybrid_correct(record, classifier_fallback)
 
             except Exception as e:
                 failures.append({"image": image_path, "error": repr(e)})
@@ -130,6 +139,25 @@ def evaluate_manifest(
         print(f"WARNING: {len(failures)}/{len(image_paths)} images failed - see failures.json")
 
     return records, failures
+
+
+def load_records_from_csv(predictions_path: str) -> list:
+    """Reload records from a predictions.csv written by a previous
+    evaluate_manifest() run - lets metrics be recomputed (e.g. with a
+    different classifier_fallback setting) without re-running inference.
+    """
+    records = []
+    with open(predictions_path, "r", newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            row["yolo_detected"] = (
+                row["yolo_detected"].lower() == "true" if row["yolo_detected"] else None
+            )
+            if row.get("hybrid_correct"):
+                row["hybrid_correct"] = row["hybrid_correct"].lower() == "true"
+            for ms_field in ("mobileclip_ms", "classifier_ms", "pipeline_ms"):
+                row[ms_field] = float(row[ms_field]) if row[ms_field] else None
+            records.append(row)
+    return records
 
 
 def classifier_label_arrays(records: list, class_names: list) -> tuple:
@@ -162,24 +190,32 @@ def save_metrics_report(report: dict, output_dir: str) -> None:
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--manifest", type=str, required=True)
+    parser.add_argument(
+        "--from-predictions",
+        type=str,
+        default=None,
+        help="Recompute the metrics report from a predictions.csv written by a previous "
+        "run, instead of re-running the pipeline. Only --label-encoder, --output-dir, "
+        "and --classifier-fallback are used in this mode.",
+    )
+    parser.add_argument("--manifest", type=str, required=False)
     parser.add_argument(
         "--mobileclip-label-map",
         type=str,
-        required=True,
+        required=False,
         help="Ground Truth A (MobileCLIP taxonomy)",
     )
     parser.add_argument(
         "--classifier-label-map",
         type=str,
-        required=True,
+        required=False,
         help="Ground Truth B (classifier taxonomy)",
     )
     parser.add_argument("--yolo", type=str, default="best.pt")
     parser.add_argument(
         "--yolo-tar", type=str, default=None, help="SageMaker model.tar.gz containing best.pt"
     )
-    parser.add_argument("--mobileclip", type=str, required=True)
+    parser.add_argument("--mobileclip", type=str, required=False)
     parser.add_argument("--mobileclip-model-name", type=str, default="mobileclip_s0")
     parser.add_argument("--prompts", type=str, default=None)
     parser.add_argument(
@@ -189,7 +225,7 @@ def parse_args():
         help="category_to_objects synonym map translating MobileCLIP's category "
         "vocabulary into the dataset's ground-truth vocabulary",
     )
-    parser.add_argument("--classifier-weights", type=str, required=True)
+    parser.add_argument("--classifier-weights", type=str, required=False)
     parser.add_argument("--label-encoder", type=str, required=True)
     parser.add_argument("--output-dir", type=str, default="evaluation-results")
     parser.add_argument(
@@ -200,34 +236,64 @@ def parse_args():
         action="store_true",
         help="Run YOLO/MobileCLIP in fp16 on GPU for faster inference (no effect on CPU)",
     )
+    parser.add_argument(
+        "--classifier-fallback",
+        action="store_true",
+        help="Experimental: when MobileCLIP's top-1/top-2 miss Ground Truth A, also "
+        "accept a match against Ground Truth B (classifier_gt) before calling it "
+        "wrong. Recovers classes that used to be joined in MobileCLIP's ground "
+        "truth and were recently split (e.g. manufactured wood/wood, bullet/bullet "
+        "casings). Off by default - does not change existing behavior.",
+    )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if not args.from_predictions:
+        required = {
+            "--manifest": args.manifest,
+            "--mobileclip-label-map": args.mobileclip_label_map,
+            "--classifier-label-map": args.classifier_label_map,
+            "--mobileclip": args.mobileclip,
+            "--classifier-weights": args.classifier_weights,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            parser.error(f"the following arguments are required: {', '.join(missing)}")
+
+    return args
 
 
 def main():
     args = parse_args()
 
-    yolo_path = extract_yolo_weights(args.yolo_tar) if args.yolo_tar else args.yolo
+    if args.from_predictions:
+        records = load_records_from_csv(args.from_predictions)
+        failures = []
+        class_names = load_label_names(args.label_encoder)
+    else:
+        yolo_path = extract_yolo_weights(args.yolo_tar) if args.yolo_tar else args.yolo
 
-    pipeline = build_pipeline(
-        yolo_path=yolo_path,
-        mobileclip_path=args.mobileclip,
-        classifier_weights_path=args.classifier_weights,
-        label_encoder_path=args.label_encoder,
-        mobileclip_model_name=args.mobileclip_model_name,
-        prompts_path=args.prompts,
-        mobileclip_mapping_path=args.mobileclip_mapping,
-        fp16=args.fp16,
-    )
+        pipeline = build_pipeline(
+            yolo_path=yolo_path,
+            mobileclip_path=args.mobileclip,
+            classifier_weights_path=args.classifier_weights,
+            label_encoder_path=args.label_encoder,
+            mobileclip_model_name=args.mobileclip_model_name,
+            prompts_path=args.prompts,
+            mobileclip_mapping_path=args.mobileclip_mapping,
+            fp16=args.fp16,
+        )
 
-    records, failures = evaluate_manifest(
-        pipeline,
-        manifest_path=args.manifest,
-        mobileclip_label_map_path=args.mobileclip_label_map,
-        classifier_label_map_path=args.classifier_label_map,
-        output_dir=args.output_dir,
-        max_images=args.max_images,
-    )
+        records, failures = evaluate_manifest(
+            pipeline,
+            manifest_path=args.manifest,
+            mobileclip_label_map_path=args.mobileclip_label_map,
+            classifier_label_map_path=args.classifier_label_map,
+            output_dir=args.output_dir,
+            max_images=args.max_images,
+            classifier_fallback=args.classifier_fallback,
+        )
+        class_names = pipeline.classifier_class_names
 
     if not records:
         report = {"error": "no images processed successfully", "num_failures": len(failures)}
@@ -235,11 +301,14 @@ def main():
         print(json.dumps(report, indent=2))
         return
 
-    classifier_y_true, classifier_y_pred = classifier_label_arrays(
-        records, pipeline.classifier_class_names
-    )
+    classifier_y_true, classifier_y_pred = classifier_label_arrays(records, class_names)
 
-    report = build_metrics_report(records, classifier_y_true, classifier_y_pred)
+    report = build_metrics_report(
+        records,
+        classifier_y_true,
+        classifier_y_pred,
+        classifier_fallback=args.classifier_fallback,
+    )
     report["num_failures"] = len(failures)
 
     save_metrics_report(report, args.output_dir)

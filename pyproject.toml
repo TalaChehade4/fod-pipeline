@@ -34,11 +34,19 @@ sagemaker = ["sagemaker"]
 dev = ["pytest", "pytest-cov"]
 
 [project.scripts]
+fod-build-label-map = "fod_pipeline.pipeline.build_label_map:main"
+fod-upload = "fod_pipeline.pipeline.upload_artifact:main"
 fod-preprocess = "fod_pipeline.pipeline.preprocess:main"
 fod-prepare = "fod_pipeline.classifier.prepare:main"
 fod-train = "fod_pipeline.classifier.train:main"
 fod-evaluate = "fod_pipeline.pipeline.evaluate:main"
 fod-infer = "fod_pipeline.pipeline.infer:main"
+
+# Requires the `sagemaker` extra (pip install -e ".[sagemaker]").
+fod-sm-embed = "fod_pipeline.sagemaker.launch_embedding_job:main"
+fod-sm-prepare = "fod_pipeline.sagemaker.launch_dataset_prep_job:main"
+fod-sm-train = "fod_pipeline.sagemaker.launch_training_job:main"
+fod-sm-evaluate = "fod_pipeline.sagemaker.launch_testing_job:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

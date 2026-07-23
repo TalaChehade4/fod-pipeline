@@ -18,8 +18,18 @@ from fod_pipeline.sagemaker._common import FOD_PIPELINE_PACKAGE, package_depende
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--embeddings-uri", type=str, required=True)
-    parser.add_argument("--output-uri", type=str, required=True)
+    parser.add_argument(
+        "--embeddings-uri",
+        type=str,
+        default=None,
+        help="Defaults to embeddings/train under S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--output-uri",
+        type=str,
+        default=None,
+        help="Defaults to classifier-data under S3_PROJECT_PREFIX if omitted.",
+    )
     parser.add_argument("--val-size", type=float, default=0.1)
     parser.add_argument("--job-name", type=str, default="fod-dataset-prep")
 
@@ -31,6 +41,9 @@ def main():
 
     config = get_config()
     require_sagemaker_config(config)
+
+    embeddings_uri = args.embeddings_uri or config.s3.train_embeddings
+    output_uri = args.output_uri or config.s3.classifier_data
 
     processor = PyTorchProcessor(
         framework_version="2.1",
@@ -53,10 +66,10 @@ def main():
             "--val-size", str(args.val_size),
         ],
         inputs=[
-            ProcessingInput(source=args.embeddings_uri, destination="/opt/ml/processing/input"),
+            ProcessingInput(source=embeddings_uri, destination="/opt/ml/processing/input"),
         ],
         outputs=[
-            ProcessingOutput(source="/opt/ml/processing/output", destination=args.output_uri),
+            ProcessingOutput(source="/opt/ml/processing/output", destination=output_uri),
         ],
         wait=True,
         logs=True,

@@ -22,11 +22,46 @@ from fod_pipeline.sagemaker._common import FOD_PIPELINE_PACKAGE, package_depende
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--manifest-uri", type=str, required=True)
-    parser.add_argument("--label-map-uri", type=str, required=True)
-    parser.add_argument("--yolo-weights-uri", type=str, required=True, help="S3 model.tar.gz")
-    parser.add_argument("--mobileclip-weights-uri", type=str, required=True)
-    parser.add_argument("--output-uri", type=str, required=True)
+    parser.add_argument(
+        "--manifest-uri",
+        type=str,
+        default=None,
+        help="Defaults to manifests/<split>_manifest.json under S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--label-map-uri",
+        type=str,
+        default=None,
+        help="Defaults to manifests/<split>_label_map.json under S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--split",
+        choices=["train", "test"],
+        default="train",
+        help="Which manifest this is - picks the default --manifest-uri, --label-map-uri, "
+        "and --output-uri (under S3_PROJECT_PREFIX) when those flags are not given "
+        "explicitly.",
+    )
+    parser.add_argument(
+        "--yolo-weights-uri",
+        type=str,
+        default=None,
+        help="S3 model.tar.gz. Defaults to the weights/yolo/model.tar.gz path under "
+        "S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--mobileclip-weights-uri",
+        type=str,
+        default=None,
+        help="Defaults to the weights/mobileclip/mobileclip_s0.pt path under "
+        "S3_PROJECT_PREFIX if omitted.",
+    )
+    parser.add_argument(
+        "--output-uri",
+        type=str,
+        default=None,
+        help="Defaults to embeddings/<split> under S3_PROJECT_PREFIX if omitted.",
+    )
     parser.add_argument("--max-images", type=int, default=-1)
     parser.add_argument("--job-name", type=str, default="fod-embedding-extraction")
 
@@ -38,6 +73,14 @@ def main():
 
     config = get_config()
     require_sagemaker_config(config)
+
+    manifest_uri = args.manifest_uri or config.s3.manifest(args.split)
+    label_map_uri = args.label_map_uri or config.s3.label_map(args.split)
+    yolo_weights_uri = args.yolo_weights_uri or config.s3.yolo_weights_tar
+    mobileclip_weights_uri = args.mobileclip_weights_uri or config.s3.mobileclip_weights
+    output_uri = args.output_uri or (
+        config.s3.train_embeddings if args.split == "train" else config.s3.test_embeddings
+    )
 
     processor = PyTorchProcessor(
         framework_version="2.8",
@@ -53,10 +96,10 @@ def main():
     # destination directory - it does not rename to a fixed name - so the
     # container-side argument paths must be built from the real basenames,
     # not assumed generic names like "manifest.json".
-    manifest_filename = os.path.basename(args.manifest_uri)
-    label_map_filename = os.path.basename(args.label_map_uri)
-    yolo_tar_filename = os.path.basename(args.yolo_weights_uri)
-    mobileclip_filename = os.path.basename(args.mobileclip_weights_uri)
+    manifest_filename = os.path.basename(manifest_uri)
+    label_map_filename = os.path.basename(label_map_uri)
+    yolo_tar_filename = os.path.basename(yolo_weights_uri)
+    mobileclip_filename = os.path.basename(mobileclip_weights_uri)
 
     processor.run(
         code=str(FOD_PIPELINE_PACKAGE / "pipeline" / "preprocess.py"),
@@ -71,21 +114,21 @@ def main():
         ],
         inputs=[
             ProcessingInput(
-                source=args.manifest_uri, destination="/opt/ml/processing/input/manifest"
+                source=manifest_uri, destination="/opt/ml/processing/input/manifest"
             ),
             ProcessingInput(
-                source=args.label_map_uri, destination="/opt/ml/processing/input/labels"
+                source=label_map_uri, destination="/opt/ml/processing/input/labels"
             ),
             ProcessingInput(
-                source=args.yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
+                source=yolo_weights_uri, destination="/opt/ml/processing/input/yolo"
             ),
             ProcessingInput(
-                source=args.mobileclip_weights_uri,
+                source=mobileclip_weights_uri,
                 destination="/opt/ml/processing/input/mobileclip",
             ),
         ],
         outputs=[
-            ProcessingOutput(source="/opt/ml/processing/output", destination=args.output_uri),
+            ProcessingOutput(source="/opt/ml/processing/output", destination=output_uri),
         ],
     )
 

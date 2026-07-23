@@ -1,5 +1,5 @@
 """Stage 4 classifier evaluation, shared by post-training validation and
-standalone test-set evaluation (Section 5.2 metrics).
+standalone test-set evaluation
 """
 from __future__ import annotations
 

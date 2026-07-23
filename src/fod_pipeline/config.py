@@ -39,6 +39,27 @@ class S3Paths:
         path = "/".join([self.project_prefix, *parts])
         return f"s3://{self.bucket}/{path}/"
 
+    def manifest(self, split: str) -> str:
+        return self.uri("manifests") + f"{split}_manifest.json"
+
+    def label_map(self, split: str) -> str:
+        """Classifier-taxonomy ground truth for a split."""
+        return self.uri("manifests") + f"{split}_label_map.json"
+
+    def mobileclip_label_map(self, split: str) -> str:
+        """MobileCLIP-taxonomy ground truth (Ground Truth A) for a split."""
+        return self.uri("manifests") + f"{split}_mobileclip_label_map.json"
+
+    def database_csv(self, split: str) -> str:
+        """The id->name database CSV (trainingdata_old.csv/testingdata_old.csv)."""
+        filename = "trainingdata_old.csv" if split == "train" else "testingdata_old.csv"
+        return self.uri("manifests") + filename
+
+    @property
+    def join_config(self) -> str:
+        """Curated object_id->label overrides, shared across splits."""
+        return self.uri("manifests") + "join_config.json"
+
     @property
     def train_embeddings(self) -> str:
         return self.uri("embeddings", "train")
@@ -117,6 +138,16 @@ def get_config() -> Config:
     )
 
 
+def require_s3_bucket(config: Config) -> None:
+    """Call before computing any S3Paths-derived default - fails fast with a
+    clear message instead of producing a URI with an empty bucket.
+    """
+    if not config.s3.bucket:
+        raise RuntimeError(
+            "S3_BUCKET is not set. Copy .env.example to .env and fill it in."
+        )
+
+
 def require_sagemaker_config(config: Config) -> None:
     """Call at the top of any SageMaker launch script - fails fast with a
     clear message instead of SageMaker rejecting an empty role ARN later.
@@ -125,7 +156,4 @@ def require_sagemaker_config(config: Config) -> None:
         raise RuntimeError(
             "SAGEMAKER_ROLE_ARN is not set. Copy .env.example to .env and fill it in."
         )
-    if not config.s3.bucket:
-        raise RuntimeError(
-            "S3_BUCKET is not set. Copy .env.example to .env and fill it in."
-        )
+    require_s3_bucket(config)
