@@ -25,10 +25,15 @@ Each stage's code lives under `src/fod_pipeline/`:
 | `pipeline/` | orchestration: `preprocess` (Stage 1+2), `infer` (local forward pass), `evaluate` (Stage 4/5 hybrid report) |
 | `sagemaker/` | job launch scripts for running the above on AWS SageMaker |
 
-## Install
+## Install locally
 
 ```bash
 pip install -e ".[dev]"
+```
+## Install for sagemaker
+
+```bash
+pip install -e ".[sagemaker]"
 ```
 
 Copy `.env.example` to `.env` and fill in your AWS values before using anything
