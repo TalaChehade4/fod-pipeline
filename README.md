@@ -1,8 +1,8 @@
 # FOD Pipeline
 
-FOD (foreign object debris) recognition pipeline: YOLO detection + MobileCLIP
-embedding and similarity matching + MLP classifier, combined into a hybrid prediction with dual
-ground-truth evaluation.
+Foreign Object Debris (FOD) recognition pipeline built around YOLO, MobileCLIP,
+and an MLP classifier. The pipeline is designed to run on AWS SageMaker using data stored in Amazon S3,
+while also supporting single-image inference locally.
 
 ## Architecture
 
