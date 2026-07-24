@@ -7,12 +7,10 @@ while also supporting single-image inference locally.
 ## Architecture
 
 1. **Object Detection** - YOLO locates the foreign object and crops it with a 20% margin.
-2. **Embedding Extraction** - MobileCLIP converts the cropped image into a 512-dimensional embedding. (run once,
-   reused by both of the next two steps).
+2. **Embedding Extraction** - MobileCLIP converts the cropped image into a 512-dimensional embedding. (Run once).
 3. **MobileCLIP prediction** - The embedding is compared against text prompts to produce the Top-1 and Top-2 predictions.
 4. **Classifier prediction** - The same embedding is passed through a trained MLP classifier.
 5. **Hybrid prediction** - Combines MobileCLIP Top-1, MobileCLIP Top-2, and the MLP classifier prediction.
-   An image is considered correctly recognized if either model matches its corresponding ground truth.
 
 ## Repository Structure
 
@@ -25,154 +23,115 @@ while also supporting single-image inference locally.
 | `src/fod_pipeline/pipeline/` | Pipeline orchestration |
 | `src/fod_pipeline/sagemaker/` | SageMaker job launchers |
 
+## Installation
 
-## Clone repository
+> **Prerequisites:** Python `>= 3.10`
+
+### Step 1 — Clone the Repository
 
 ```bash
 git clone https://github.com/TalaChehade4/fod-pipeline.git
 cd fod-pipeline
 ```
 
-## Install locally
-
-```bash
-pip install -e ".[dev]"
-```
-## Install for sagemaker
+### Step 2 — Install sagemaker version
 
 ```bash
 pip install -e ".[sagemaker]"
 ```
 
-Requires Python >= 3.10.
+## AWS Configuration
 
-Copy `.env.example` to `.env` and fill in your AWS values before using anything
-under `sagemaker/` (launching a job) or `core/s3_io.py` (reading from S3):
-
-```bash
-cp .env.example .env
-```
-
-## Local CLI usage
-
-Everything here runs on your machine against local files - no S3, no
-SageMaker. Skip to **Running entirely on SageMaker** below if that's your
-workflow instead.
-
-```bash
-# Stage 0: build label_map.json from a manifest + a lookup source. Needed twice,
-# once per ground truth - label_map.json is always a consumed input everywhere else,
-# nothing else produces it:
-#   - classifier ground truth: --join-config (curated overrides) checked first,
-#     --csv (e.g. trainingdata_old.csv/testingdata_old.csv) fills the rest
-#   - MobileCLIP ground truth: --csv only, no --join-config
-fod-build-label-map --manifest train_manifest.json --csv trainingdata_old.csv \
-    --id-column trainingID --join-config join_config.json --output classifier_label_map.json
-fod-build-label-map --manifest train_manifest.json --csv trainingdata_old.csv \
-    --id-column trainingID --output mobileclip_label_map.json
-
-# Stage 1+2: extract embeddings from a manifest
-fod-preprocess --manifest manifest.json --label-map label_map.json \
-    --yolo best.pt --mobileclip mobileclip_s0.pt --output-dir embeddings/
-
-# Stage 4 data prep: split + class weights + label encoding
-fod-prepare --input-dir embeddings/ --output-dir PreparedData/
-
-# Stage 4 training (MLP only)
-fod-train --train-dir PreparedData/ --model-dir FinalModel/
-
-# Stage 4/5 evaluation: full hybrid metrics report against dual ground truth
-# (classifier fallback for MobileCLIP's Top-1/Top-2 matching is on by default;
-# pass --no-classifier-fallback for strict Ground-Truth-A-only matching)
-fod-evaluate --manifest test_manifest.json \
-    --mobileclip-label-map ground_truth_a.json \
-    --classifier-label-map ground_truth_b.json \
-    --yolo best.pt --mobileclip mobileclip_s0.pt \
-    --classifier-weights FinalModel/model.pth \
-    --label-encoder PreparedData/label_encoder.json \
-    --output-dir evaluation-results/
-
-# Local single-image inference (forward pass)
-fod-infer path/to/image.jpg --yolo best.pt --mobileclip mobileclip_s0.pt \
-    --classifier-weights FinalModel/model.pth \
-    --label-encoder PreparedData/label_encoder.json
-```
-
-## Running entirely on SageMaker (S3-backed)
-
-Use this section if all your data lives in S3 and you never want to touch a
-local copy of a manifest, CSV, or model file. Every command below either
-reads/writes S3 directly or launches a SageMaker job that reads/writes S3 -
-nothing is expected to exist on your laptop's filesystem. Requires
-`pip install -e ".[sagemaker]"`.
-
-Every S3 location involved - weights, manifests, database CSVs, join-config,
-label maps, and the `-uri` flags on the `fod-sm-*` commands - defaults to a
-path computed from `S3_BUCKET` + `S3_PROJECT_PREFIX` in `.env`, so once
-`.env` is filled in and step 3's files are uploaded once, none of the
-commands below need an S3 URI typed by hand. Pass a flag explicitly only to
-override one location - e.g. if a file lives somewhere other than its
-default path.
-
-(If you ever do need to write a URI by hand, `<bucket>`/`<prefix>` mean
-"substitute your real `S3_BUCKET`/`S3_PROJECT_PREFIX` value here", not a
-shell variable. `.env` is only loaded by `python-dotenv` inside the Python
-process - it is never exported to your terminal, so typing the literal
-`$S3_BUCKET` or `%S3_BUCKET%` will not expand to anything.)
-
-### 1. Configure `.env`
+### Step 1 — Create the environment file
+Copy `.env.example` to `.env` before using S3 utilities (`core/s3_io.py`) or launching SageMaker jobs (`sagemaker/`):
 
 ```bash
 cp .env.example .env
 ```
+### Step 2 — Configure environment variables
+Open `.env` and set your AWS resources:
+```bash
+AWS_REGION=your-aws-region
+SAGEMAKER_ROLE_ARN=arn:aws:iam::123456789012:role/service-role/AmazonSageMaker-ExecutionRole
+S3_BUCKET=your-s3-bucket-name
+S3_PROJECT_PREFIX=your-project-prefix
+```
+**Note:** These variables are loaded automatically across the pipeline. You only need to pass an explicit path flag if you want to override a default S3 location.
 
-Fill in `AWS_REGION`, `SAGEMAKER_ROLE_ARN`, `S3_BUCKET`, `S3_PROJECT_PREFIX`.
+## Running the Pipeline on SageMaker
+The complete pipeline is intended to run on AWS SageMaker.
 
-### 2. Upload model weights (one-time)
+### Step 1 — Upload model weights
+> **Note:** This step only needs to be run **once** before launching training or evaluation pipelines.
+They are currently saved at `s3://oreyeon-models/Tala-temp/fod-pipeline/weights/`.
 
 ```bash
 fod-upload yolo_model.tar.gz --kind yolo-weights
 fod-upload mobileclip_s0.pt --kind mobileclip-weights
 ```
 
-### 3. Get your manifests, database CSVs, and join-config into S3 (one-time)
+### Step 2 — Upload datasets
+> **Note:** This step only needs to be run **once** before launching training or evaluation pipelines.
+Upload the required dataset manifests, database files, and join mappings used to construct the ground truth for MobileCLIP embeddings and the MLP classifier. They are currently saved at `s3://oreyeon-models/Tala-temp/fod-pipeline/manifests/`.
 
 ```bash
-fod-upload train_manifest.manifest --kind manifest --split train
+# --- 1. Dataset Manifests ---
+# Saved automatically as 'train_manifest.json' (Classifier training data)
+fod-upload train_manifest.manifest --kind manifest --split train in S3
+
+# Saved automatically as 'test_manifest.json' (MobileCLIP & classifier evaluation data)
 fod-upload test_manifest.manifest --kind manifest --split test
 
+# --- 2. Database CSVs ---
+# Saved automatically as 'trainingdata_old.csv' (Training FOD IDs & labels of the database)
 fod-upload trainingdata_old.csv --kind database-csv --split train
+
+# Saved automatically as 'testingdata_old.csv' (Testing FOD IDs & labels of the database)
 fod-upload testingdata_old.csv --kind database-csv --split test
+
+# Saved automatically as 'join_config.json' (Classes mapping for classifier only)
 fod-upload join_config.json --kind join-config
 ```
 
-### 4. Build the label maps
-
-Once step 3's files are in place, every input defaults - `fod-build-label-map`
-needs nothing but `--split` (+ `--ground-truth` to pick which one):
+### Step 3 — Build label maps
+> **Note:** This step only needs to be run **once** before launching training or evaluation pipelines.
+Generate the required ground-truth label maps. They are currently saved at `s3://oreyeon-models/Tala-temp/fod-pipeline/manifests/`.
 
 ```bash
-# Classifier ground truth (train split) - join-config checked first, CSV fallback
+# Classifier ground truth (train split) - join-config checked first, database fallback. Saved automatically as `train_label_map.json`
 fod-build-label-map --split train --ground-truth classifier
 
-# Classifier ground truth (Ground Truth B, test split)
+# Classifier ground truth (test split). Saved automatically as `test_label_map.json`
 fod-build-label-map --split test --ground-truth classifier
 
-# MobileCLIP ground truth (Ground Truth A, test split) - CSV only, no join-config
+# MobileCLIP ground truth (test split) - database only, no join-config. Saved automatically as `test_mobileclip_label_map.json`
 fod-build-label-map --split test --ground-truth mobileclip
 ```
 
-(`--csv`/`--id-column`/`--join-config`/`--manifest`/`--output` still accept
-explicit local paths or `s3://` URIs if your files live somewhere other than
-the step-3 defaults - `fod-build-label-map` downloads/uploads either way, so
-nothing has to touch a persistent local file regardless.)
-
-### 5. Run the pipeline stages
+### Step 4 — Extract embeddings
+> **Note:** This step only needs to be run **once** before launching training or evaluation pipelines unless new training or testing data is provided.
+Generate MobileCLIP embeddings for the training and testing image datasets. Extracted embeddings are automatically saved in S3 at `s3://oreyeon-models/Tala-temp/fod-pipeline/embeddings/`.
 
 ```bash
-# Stage 1+2: extract embeddings (train split, then test split)
+# Extract embeddings for the training set
 fod-sm-embed --split train
+
+# Extract embeddings for the testing set
 fod-sm-embed --split test
+```
+
+### Step 5 — Prepare classifier data
+> **Note:** This step only needs to be run **once** before launching training or evaluation pipelines unless new training or testing data is provided or new classes were added.
+Preprocesses the extracted embeddings to generate the following core artifacts: 
+
+* **Train / Validation Split:** Randomly shuffles the training embeddings and splits them into **90% train** and **10% validation** sets (`train` and `val` embedding files).
+* **Label Encoder:** Maps each FOD class label to a unique numerical index.
+* **Class Weights:** Computes class distribution weights to handle class imbalance during loss calculation (weighted cross-entropy).
+
+Saved automatically in S3 at `s3://oreyeon-models/Tala-temp/fod-pipeline/classifier-data/`.
+```bash
+fod-sm-prepare
+```
 
 # Stage 4 data prep: split + class weights + label encoding
 # writes label_encoder.json to s3://<bucket>/<prefix>/classifier-data/
@@ -207,4 +166,9 @@ Results land in `s3://<bucket>/<prefix>/hybrid-results/`
 
 ```bash
 pytest
+```
+# Local single-image inference (forward pass)
+fod-infer path/to/image.jpg --yolo best.pt --mobileclip mobileclip_s0.pt \
+    --classifier-weights FinalModel/model.pth \
+    --label-encoder PreparedData/label_encoder.json
 ```
