@@ -12,7 +12,13 @@ from fod_pipeline.config import get_config, require_s3_bucket
 from fod_pipeline.core.s3_io import upload_to_s3
 
 SPLIT_REQUIRED_KINDS = {"manifest", "label-map", "mobileclip-label-map", "database-csv"}
-KIND_CHOICES = ["yolo-weights", "mobileclip-weights", "join-config", *SPLIT_REQUIRED_KINDS]
+KIND_CHOICES = [
+    "yolo-weights",
+    "mobileclip-weights",
+    "join-config",
+    "mobileclip-mapping",
+    *SPLIT_REQUIRED_KINDS,
+]
 
 
 def resolve_destination(config, kind: str, split: str | None) -> str:
@@ -33,6 +39,8 @@ def resolve_destination(config, kind: str, split: str | None) -> str:
         return config.s3.database_csv(split)
     if kind == "join-config":
         return config.s3.join_config
+    if kind == "mobileclip-mapping":
+        return config.s3.mobileclip_mapping
 
     raise ValueError(f"Unknown kind: {kind}")
 

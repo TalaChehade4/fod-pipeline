@@ -61,6 +61,12 @@ class S3Paths:
         return self.uri("manifests") + "join_config.json"
 
     @property
+    def mobileclip_mapping(self) -> str:
+        """category_to_objects synonym map (MobileCLIP category -> dataset
+        label), shared across splits - see core.labels.load_synonym_mapping."""
+        return self.uri("manifests") + "mobileclip_category_mapping.json"
+
+    @property
     def train_embeddings(self) -> str:
         return self.uri("embeddings", "train")
 

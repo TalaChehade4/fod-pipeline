@@ -91,6 +91,12 @@ fod-upload testingdata_old.csv --kind database-csv --split test
 
 # Saved automatically as 'join_config.json' (Classes mapping for classifier only)
 fod-upload join_config.json --kind join-config
+
+# category_to_objects synonym map (MobileCLIP category -> dataset label) -
+# without this, fod-sm-evaluate compares MobileCLIP's raw category names
+# directly against your dataset's ground-truth vocabulary, understating
+# Stage 3 accuracy for every category whose name differs between the two
+fod-upload mobileclip_category_mapping_new.json --kind mobileclip-mapping
 ```
 
 ### Step 3 — Build label maps

@@ -59,9 +59,11 @@ def parse_args():
         "--mobileclip-mapping-uri",
         type=str,
         default=None,
-        help="category_to_objects synonym map (e.g. mobileclip_category_mapping_new.json) - "
-        "required for meaningful Stage 3 accuracy, since MobileCLIP's category vocabulary "
-        "differs from the dataset's ground-truth vocabulary",
+        help="category_to_objects synonym map - required for meaningful Stage 3 accuracy, "
+        "since MobileCLIP's category vocabulary differs from the dataset's ground-truth "
+        "vocabulary. Defaults to manifests/mobileclip_category_mapping.json under "
+        "S3_PROJECT_PREFIX (upload it there with fod-upload --kind mobileclip-mapping) "
+        "if omitted.",
     )
     parser.add_argument(
         "--classifier-weights-uri",
@@ -115,6 +117,7 @@ def main():
     mobileclip_weights_uri = args.mobileclip_weights_uri or config.s3.mobileclip_weights
     classifier_weights_uri = args.classifier_weights_uri or config.s3.classifier_weights_tar
     label_encoder_uri = args.label_encoder_uri or config.s3.label_encoder
+    mobileclip_mapping_uri = args.mobileclip_mapping_uri or config.s3.mobileclip_mapping
     output_uri = args.output_uri or config.s3.hybrid_results
 
     processor = PyTorchProcessor(
@@ -138,6 +141,7 @@ def main():
     mobileclip_filename = os.path.basename(mobileclip_weights_uri)
     classifier_weights_filename = os.path.basename(classifier_weights_uri)
     label_encoder_filename = os.path.basename(label_encoder_uri)
+    mobileclip_mapping_filename = os.path.basename(mobileclip_mapping_uri)
 
     arguments = [
         "--manifest", f"/opt/ml/processing/input/manifest/{manifest_filename}",
@@ -150,6 +154,8 @@ def main():
         "--classifier-weights-tar",
         f"/opt/ml/processing/input/classifier/{classifier_weights_filename}",
         "--label-encoder", f"/opt/ml/processing/input/label_encoder/{label_encoder_filename}",
+        "--mobileclip-mapping",
+        f"/opt/ml/processing/input/mapping/{mobileclip_mapping_filename}",
         "--output-dir", "/opt/ml/processing/output",
     ]
 
@@ -186,19 +192,11 @@ def main():
             source=label_encoder_uri,
             destination="/opt/ml/processing/input/label_encoder",
         ),
+        ProcessingInput(
+            source=mobileclip_mapping_uri,
+            destination="/opt/ml/processing/input/mapping",
+        ),
     ]
-
-    if args.mobileclip_mapping_uri:
-        mapping_filename = os.path.basename(args.mobileclip_mapping_uri)
-        arguments += [
-            "--mobileclip-mapping", f"/opt/ml/processing/input/mapping/{mapping_filename}"
-        ]
-        inputs.append(
-            ProcessingInput(
-                source=args.mobileclip_mapping_uri,
-                destination="/opt/ml/processing/input/mapping",
-            )
-        )
 
     processor.run(
         code=str(FOD_PIPELINE_PACKAGE / "pipeline" / "evaluate.py"),
