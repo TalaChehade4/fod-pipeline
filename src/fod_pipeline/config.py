@@ -85,6 +85,15 @@ class S3Paths:
         return self.uri("hybrid-results")
 
     @property
+    def classifier_weights_tar(self) -> str:
+        """Fixed key fod-sm-train copies its trained model.tar.gz to."""
+        return self.classifier_models + "model.tar.gz"
+
+    @property
+    def label_encoder(self) -> str:
+        return self.classifier_data + "label_encoder.json"
+
+    @property
     def yolo_weights_tar(self) -> str:
         return self.uri("weights", "yolo") + "model.tar.gz"
 

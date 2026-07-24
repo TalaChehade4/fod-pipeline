@@ -191,13 +191,14 @@ overwritten on every run and always points at the latest trained model:
 ```bash
 # Stage 4/5 evaluation: full hybrid metrics report against dual ground truth
 # (classifier fallback is on by default here too; pass --no-classifier-fallback to disable)
-fod-sm-evaluate \
-    --classifier-weights-uri s3://<bucket>/<prefix>/classifier-models/model.tar.gz \
-    --label-encoder-uri s3://<bucket>/<prefix>/classifier-data/label_encoder.json
+fod-sm-evaluate
 ```
 
-If you need the artifacts from a specific past run rather than the latest,
-they're still there under `classifier-results/<job-name>/output/model.tar.gz`.
+`--classifier-weights-uri`/`--label-encoder-uri` both default to the paths
+above (`classifier-models/model.tar.gz`, `classifier-data/label_encoder.json`)
+under `S3_PROJECT_PREFIX` - pass either explicitly only to override, e.g. to
+evaluate a specific past run's artifacts instead of the latest, still
+available under `classifier-results/<job-name>/output/model.tar.gz`.
 
 Results land in `s3://<bucket>/<prefix>/hybrid-results/`
 (`--output-uri` to override).

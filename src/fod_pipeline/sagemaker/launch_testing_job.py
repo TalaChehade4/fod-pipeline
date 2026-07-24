@@ -63,8 +63,20 @@ def parse_args():
         "required for meaningful Stage 3 accuracy, since MobileCLIP's category vocabulary "
         "differs from the dataset's ground-truth vocabulary",
     )
-    parser.add_argument("--classifier-weights-uri", type=str, required=True)
-    parser.add_argument("--label-encoder-uri", type=str, required=True)
+    parser.add_argument(
+        "--classifier-weights-uri",
+        type=str,
+        default=None,
+        help="Defaults to the classifier-models/model.tar.gz path under S3_PROJECT_PREFIX "
+        "(where fod-sm-train copies its output) if omitted.",
+    )
+    parser.add_argument(
+        "--label-encoder-uri",
+        type=str,
+        default=None,
+        help="Defaults to the classifier-data/label_encoder.json path under S3_PROJECT_PREFIX "
+        "(where fod-sm-prepare writes it) if omitted.",
+    )
     parser.add_argument(
         "--output-uri",
         type=str,
@@ -101,6 +113,8 @@ def main():
     )
     yolo_weights_uri = args.yolo_weights_uri or config.s3.yolo_weights_tar
     mobileclip_weights_uri = args.mobileclip_weights_uri or config.s3.mobileclip_weights
+    classifier_weights_uri = args.classifier_weights_uri or config.s3.classifier_weights_tar
+    label_encoder_uri = args.label_encoder_uri or config.s3.label_encoder
     output_uri = args.output_uri or config.s3.hybrid_results
 
     processor = PyTorchProcessor(
@@ -122,8 +136,8 @@ def main():
     classifier_label_map_filename = os.path.basename(classifier_label_map_uri)
     yolo_tar_filename = os.path.basename(yolo_weights_uri)
     mobileclip_filename = os.path.basename(mobileclip_weights_uri)
-    classifier_weights_filename = os.path.basename(args.classifier_weights_uri)
-    label_encoder_filename = os.path.basename(args.label_encoder_uri)
+    classifier_weights_filename = os.path.basename(classifier_weights_uri)
+    label_encoder_filename = os.path.basename(label_encoder_uri)
 
     arguments = [
         "--manifest", f"/opt/ml/processing/input/manifest/{manifest_filename}",
@@ -165,11 +179,11 @@ def main():
             destination="/opt/ml/processing/input/mobileclip",
         ),
         ProcessingInput(
-            source=args.classifier_weights_uri,
+            source=classifier_weights_uri,
             destination="/opt/ml/processing/input/classifier",
         ),
         ProcessingInput(
-            source=args.label_encoder_uri,
+            source=label_encoder_uri,
             destination="/opt/ml/processing/input/label_encoder",
         ),
     ]
