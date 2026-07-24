@@ -6,24 +6,24 @@ while also supporting single-image inference locally.
 
 ## Architecture
 
-1. **Detect** - YOLO locates the object, crops it with a 20% expansion margin.
-2. **Embed** - MobileCLIP encodes the crop into a 512-D embedding (run once,
+1. **Object Detection** - YOLO locates the foreign object and crops it with a 20% margin.
+2. **Embedding Extraction** - MobileCLIP converts the cropped image into a 512-dimensional embedding. (run once,
    reused by both of the next two steps).
-3. **MobileCLIP prediction** - Top-1/Top-2 categories via text-prompt similarity.
-4. **Classifier prediction** - the same embedding, fed through an MLP classifier.
-5. **Hybrid prediction** - combines MobileCLIP Top-1, MobileCLIP Top-2, and the MLP classifier prediction.
+3. **MobileCLIP prediction** - The embedding is compared against text prompts to produce the Top-1 and Top-2 predictions.
+4. **Classifier prediction** - The same embedding is passed through a trained MLP classifier.
+5. **Hybrid prediction** - Combines MobileCLIP Top-1, MobileCLIP Top-2, and the MLP classifier prediction.
    An image is considered correctly recognized if either model matches its corresponding ground truth.
 
-Each stage's code lives under `src/fod_pipeline/`:
+## Repository Structure
 
 | Package | Purpose |
-|---------|---------|
-| `core/` | YOLO detection, MobileCLIP embedding, S3 I/O, label mapping |
-| `data/` | Contains the FOD categories and prompts used by MobileCLIP|
-| `classifier/` | MLP model, data prep, training, evaluation |
-| `hybrid/` | dual ground truth + OR-rule metrics |
-| `pipeline/` | orchestration: `preprocess` (Stage 1+2), `infer` (local forward pass), `evaluate` (Stage 4/5 hybrid report) |
-| `sagemaker/` | job launch scripts for running the above on AWS SageMaker |
+| :--- | :--- |
+| `src/fod_pipeline/core/` | YOLO detection, MobileCLIP embedding, S3 utilities, label mapping |
+| `src/fod_pipeline/data/` | FOD categories and MobileCLIP prompts |
+| `src/fod_pipeline/classifier/` | MLP model, data preparation, training |
+| `src/fod_pipeline/hybrid/` | Hybrid evaluation metrics |
+| `src/fod_pipeline/pipeline/` | Pipeline orchestration |
+| `src/fod_pipeline/sagemaker/` | SageMaker job launchers |
 
 
 ## Clone repository
