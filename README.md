@@ -143,14 +143,14 @@ Saved automatically in S3 at `s3://oreyeon-models/Tala-temp/fod-pipeline/classif
 fod-sm-prepare
 ```
 
-# Step 6 — Train the classifier
+### Step 6 — Train the classifier
 
 ```bash
 fod-sm-train --epochs 100
 ```
 After training, the latest model is automatically copied to `classifier-models/model.tar.gz` while previous training runs remain available under `classifier-results/<job-name>/`
 
-# Step 7 — Evaluate the hybrid pipeline
+### Step 7 — Evaluate the hybrid pipeline
 Results are written to `s3://oreyeon-models/Tala-temp/fod-pipeline/hybrid-results/`.
 
 The hybrid evaluation pipeline combines fine-grained predictions from **MobileCLIP** with broader predictions from the **MLP Classifier**.
@@ -190,7 +190,7 @@ Is MobileCLIP Top-1 or Top-2 == MobileCLIP Ground Truth?
 ```bash
 fod-sm-evaluate
 ```
-# Local Inference
+## Local Inference
 
 Although training and evaluation are intended to run on SageMaker, inference can run locally on a single image.
 
@@ -198,7 +198,7 @@ Although training and evaluation are intended to run on SageMaker, inference can
 fod-infer path/to/image.png --yolo best.pt --mobileclip mobileclip_s0.pt --classifier-weights model.pth --label-encoder label_encoder.json
 ```
 
-# Tests
+## Tests
 
 ```bash
 pytest
