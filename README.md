@@ -36,8 +36,6 @@ cd fod-pipeline
 ## Install locally
 
 ```bash
-git clone https://github.com/TalaChehade4/fod-pipeline.git
-cd fod-pipeline
 pip install -e ".[dev]"
 ```
 ## Install for sagemaker
