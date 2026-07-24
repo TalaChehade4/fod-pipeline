@@ -44,6 +44,17 @@ def upload_to_s3(local_path: str, s3_uri: str, s3_client=None) -> None:
     s3_client.upload_file(local_path, bucket, key)
 
 
+def copy_within_s3(source_uri: str, dest_uri: str, s3_client=None) -> None:
+    s3_client = s3_client or get_s3_client()
+    source_bucket, source_key = _bucket_and_key(source_uri)
+    dest_bucket, dest_key = _bucket_and_key(dest_uri)
+    s3_client.copy_object(
+        Bucket=dest_bucket,
+        Key=dest_key,
+        CopySource={"Bucket": source_bucket, "Key": source_key},
+    )
+
+
 def load_image_from_s3(s3_uri: str, s3_client=None) -> Image.Image:
     s3_client = s3_client or get_s3_client()
 

@@ -36,6 +36,8 @@ cd fod-pipeline
 ## Install locally
 
 ```bash
+git clone https://github.com/TalaChehade4/fod-pipeline.git
+cd fod-pipeline
 pip install -e ".[dev]"
 ```
 ## Install for sagemaker
@@ -43,6 +45,8 @@ pip install -e ".[dev]"
 ```bash
 pip install -e ".[sagemaker]"
 ```
+
+Requires Python >= 3.10.
 
 Copy `.env.example` to `.env` and fill in your AWS values before using anything
 under `sagemaker/` (launching a job) or `core/s3_io.py` (reading from S3):
@@ -180,26 +184,22 @@ fod-sm-prepare
 fod-sm-train --epochs 100
 ```
 
-`fod-sm-train` doesn't write to a fixed, predictable path - SageMaker appends
-its own job-name/timestamp folder under the training job's output location.
-Find the resulting `model.tar.gz` with:
-
-```bash
-aws s3 ls --recursive s3://<bucket>/<prefix>/classifier-results/ | grep model.tar.gz
-```
-
-(Heads up: this lands under `classifier-results/`, not the seemingly
-purpose-built `classifier-models/` path defined in `config.py` - that
-property exists but nothing currently writes to it. Worth confirming that's
-intentional.)
+SageMaker writes the raw training job output (including `model.tar.gz`)
+under its own job-name/timestamp folder in `classifier-results/` - that part
+can't be disabled. After the job finishes, `fod-sm-train` copies that
+`model.tar.gz` to a fixed key, `classifier-models/model.tar.gz`, which is
+overwritten on every run and always points at the latest trained model:
 
 ```bash
 # Stage 4/5 evaluation: full hybrid metrics report against dual ground truth
 # (classifier fallback is on by default here too; pass --no-classifier-fallback to disable)
 fod-sm-evaluate \
-    --classifier-weights-uri s3://<bucket>/<prefix>/classifier-results/<job-name>/output/model.tar.gz \
+    --classifier-weights-uri s3://<bucket>/<prefix>/classifier-models/model.tar.gz \
     --label-encoder-uri s3://<bucket>/<prefix>/classifier-data/label_encoder.json
 ```
+
+If you need the artifacts from a specific past run rather than the latest,
+they're still there under `classifier-results/<job-name>/output/model.tar.gz`.
 
 Results land in `s3://<bucket>/<prefix>/hybrid-results/`
 (`--output-uri` to override).

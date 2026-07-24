@@ -13,6 +13,7 @@ from sagemaker.inputs import TrainingInput
 from sagemaker.pytorch import PyTorch
 
 from fod_pipeline.config import get_config, require_sagemaker_config
+from fod_pipeline.core.s3_io import copy_within_s3
 from fod_pipeline.sagemaker._common import FOD_PIPELINE_PACKAGE, package_dependencies
 
 
@@ -60,6 +61,16 @@ def main():
         wait=True,
         logs=True,
     )
+
+    # estimator.fit() writes model.tar.gz under a job-name/timestamp folder
+    # that SageMaker generates and appends to output_path itself - there's no
+    # way to suppress that. Copy the artifact to a fixed key afterwards so
+    # downstream steps (fod-sm-evaluate) always have one predictable path,
+    # instead of having to search classifier-results/ for the latest job.
+    fixed_model_uri = config.s3.classifier_models + "model.tar.gz"
+    copy_within_s3(estimator.model_data, fixed_model_uri)
+    print(f"Model artifact: {estimator.model_data}")
+    print(f"Copied to fixed path: {fixed_model_uri}")
 
 
 if __name__ == "__main__":

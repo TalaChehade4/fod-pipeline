@@ -32,11 +32,16 @@ class EmbeddingDataset(Dataset):
 
 def load_embeddings(input_dir: str):
     """Read every embedding JSON file under input_dir - each file may hold
-    one sample or a list of samples - into (X, y) arrays."""
+    one sample or a list of samples - into (X, y) arrays.
+
+    Only matches *_embeddings.json, the naming preprocess.py writes -
+    input_dir also holds failures.json when some images failed Stage 1+2,
+    and those records have no "embedding"/"label" keys.
+    """
     embeddings = []
     labels = []
 
-    json_files = glob.glob(os.path.join(input_dir, "**/*.json"), recursive=True)
+    json_files = glob.glob(os.path.join(input_dir, "**/*_embeddings.json"), recursive=True)
 
     for file in json_files:
         with open(file, "r") as f:
