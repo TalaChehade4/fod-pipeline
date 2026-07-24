@@ -226,9 +226,6 @@ Is MobileCLIP Top-1 or Top-2 == MobileCLIP Ground Truth?
                      └── NO  ──> Mark as INCORRECT
 ```
 
-Tiers 2 and 3 (the Classifier Ground Truth fallback) are enabled by default -
-pass `--no-classifier-fallback` for strict, fine-grained-only matching.
-
 ```bash
 fod-sm-evaluate
 ```
