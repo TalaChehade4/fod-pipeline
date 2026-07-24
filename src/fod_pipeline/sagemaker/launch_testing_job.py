@@ -91,10 +91,12 @@ def parse_args():
     )
     parser.add_argument(
         "--classifier-fallback",
-        action="store_true",
-        help="Experimental: when MobileCLIP's top-1/top-2 miss Ground Truth A, also "
-        "accept a match against Ground Truth B (classifier_gt) before calling it "
-        "wrong. Off by default - does not change existing behavior.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When MobileCLIP's top-1/top-2 miss Ground Truth A, also accept a "
+        "match against Ground Truth B (classifier_gt) before calling it wrong. "
+        "On by default - pass --no-classifier-fallback for strict "
+        "Ground-Truth-A-only matching.",
     )
 
     return parser.parse_args()
@@ -162,8 +164,12 @@ def main():
     if args.fp16:
         arguments.append("--fp16")
 
-    if args.classifier_fallback:
-        arguments.append("--classifier-fallback")
+    # Forwarded explicitly (not just when true) since evaluate.py's own
+    # --classifier-fallback also defaults to True - an unset flag here would
+    # silently use that default instead of respecting --no-classifier-fallback.
+    arguments.append(
+        "--classifier-fallback" if args.classifier_fallback else "--no-classifier-fallback"
+    )
 
     inputs = [
         ProcessingInput(

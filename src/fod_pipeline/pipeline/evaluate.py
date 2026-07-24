@@ -244,12 +244,14 @@ def parse_args():
     )
     parser.add_argument(
         "--classifier-fallback",
-        action="store_true",
-        help="Experimental: when MobileCLIP's top-1/top-2 miss Ground Truth A, also "
-        "accept a match against Ground Truth B (classifier_gt) before calling it "
-        "wrong. Recovers classes that used to be joined in MobileCLIP's ground "
-        "truth and were recently split (e.g. manufactured wood/wood, bullet/bullet "
-        "casings). Off by default - does not change existing behavior.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When MobileCLIP's top-1/top-2 miss Ground Truth A, also accept a "
+        "match against Ground Truth B (classifier_gt) before calling it wrong. "
+        "Recovers classes that used to be joined in MobileCLIP's ground truth "
+        "and were recently split (e.g. manufactured wood/wood, bullet/bullet "
+        "casings). On by default - pass --no-classifier-fallback for strict "
+        "Ground-Truth-A-only matching.",
     )
 
     args = parser.parse_args()
