@@ -23,6 +23,43 @@ while also supporting single-image inference locally.
 | `src/fod_pipeline/pipeline/` | Pipeline orchestration |
 | `src/fod_pipeline/sagemaker/` | SageMaker job launchers |
 
+## Data Pipeline
+```mermaid
+flowchart TD
+    %% Node Styling Definitions
+    classDef file fill:#f9f9f9,stroke:#666,stroke-width:1px;
+    classDef process fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef eval fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+
+    Manifest[Input Dataset Manifest]:::file --> EmbedExtract[MobileCLIP Feature Extraction]:::process
+    
+    subgraph Feature_Extraction [1. Embedding Generation]
+        EmbedExtract --> EmbedFile[(embeddings.json / .pt)]:::file
+    end
+
+    subgraph Data_Prep_And_Training [2. Classifier Pipeline]
+        EmbedFile --> PrepData[Classifier Data Preparation]:::process
+        PrepData --> TrainSet[train.json]:::file
+        PrepData --> ValSet[val.json]:::file
+        PrepData --> LabelEnc[label_encoder.json]:::file
+        PrepData --> ClassW[class_weights.json]:::file
+
+        TrainSet & ValSet & ClassW --> TrainMLP[MLP Classifier Training]:::process
+        TrainMLP --> TrainedModel[(model.tar.gz)]:::file
+    end
+
+    subgraph Hybrid_Inference [3. Hybrid Evaluation]
+        EmbedFile --> SimSearch[MobileCLIP Cosine Similarity<br/>Top-1 & Top-2 Extraction]:::process
+        TrainedModel --> ClassifierInfer[MLP Classifier Inference]:::process
+
+        SimSearch --> HybridLogic{Hybrid Evaluation Logic}:::eval
+        ClassifierInfer --> HybridLogic
+
+        HybridLogic --> EvalCSV[evaluation.csv]:::file
+        HybridLogic --> MetricsJSON[metrics.json]:::file
+    end
+```
+
 ## Installation
 
 > **Prerequisites:** Python `>= 3.10`
