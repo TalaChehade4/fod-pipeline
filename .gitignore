@@ -15,7 +15,7 @@ htmlcov/
 .venv/
 venv/
 
-# Data & model artifacts (business/proprietary — never commit)
+# Data & model artifacts 
 # Anchored to repo root so it doesn't also match src/fod_pipeline/data/,
 # the bundled MobileCLIP prompt resource that ships with the package.
 /data/
