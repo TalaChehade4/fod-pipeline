@@ -1,8 +1,5 @@
 """Upload a local file to its default S3 location, computed from `.env`
-(`S3_BUCKET` + `S3_PROJECT_PREFIX` via `config.py`'s `S3Paths`) - so nobody
-has to type an `s3://<bucket>/<prefix>/...` URI by hand for the handful of
-fixed-location artifacts (model weights, manifests, the id->name database
-CSVs, the join-config override) the pipeline expects.
+(`S3_BUCKET` + `S3_PROJECT_PREFIX` via `config.py`'s `S3Paths`)
 """
 from __future__ import annotations
 
