@@ -43,12 +43,14 @@ pip install -e ".[sagemaker]"
 ## AWS Configuration
 
 ### Step 1 — Create the environment file
+
 Copy `.env.example` to `.env` before using S3 utilities (`core/s3_io.py`) or launching SageMaker jobs (`sagemaker/`):
 
 ```bash
 cp .env.example .env
 ```
 ### Step 2 — Configure environment variables
+
 Open `.env` and set your AWS resources:
 ```bash
 AWS_REGION=your-aws-region
@@ -71,6 +73,7 @@ fod-upload mobileclip_s0.pt --kind mobileclip-weights
 ```
 
 ### Step 2 — Upload datasets
+
 > **Note:** This step only needs to be run **once** before launching training or evaluation pipelines.
 Upload the required dataset manifests, database files, and join mappings used to construct the ground truth for MobileCLIP embeddings and the MLP classifier. They are currently saved at `s3://oreyeon-models/Tala-temp/fod-pipeline/manifests/`.
 
@@ -92,14 +95,13 @@ fod-upload testingdata_old.csv --kind database-csv --split test
 # Saved automatically as 'join_config.json' (Classes mapping for classifier only)
 fod-upload join_config.json --kind join-config
 
-# category_to_objects synonym map (MobileCLIP category -> dataset label) -
-# without this, fod-sm-evaluate compares MobileCLIP's raw category names
-# directly against your dataset's ground-truth vocabulary, understating
-# Stage 3 accuracy for every category whose name differs between the two
-fod-upload mobileclip_category_mapping_new.json --kind mobileclip-mapping
+# --- 3. MobileCLIP Mapping ---
+# Saved automatically as 'mobileclip_category_mapping.json' (Maps MobileCLIP FOD categories to database class labels for alignment and accuracy evaluation)
+fod-upload mobileclip_category_mapping.json --kind mobileclip-mapping
 ```
 
 ### Step 3 — Build label maps
+
 > **Note:** This step only needs to be run **once** before launching training or evaluation pipelines.
 Generate the required ground-truth label maps. They are currently saved at `s3://oreyeon-models/Tala-temp/fod-pipeline/manifests/`.
 
@@ -115,6 +117,7 @@ fod-build-label-map --split test --ground-truth mobileclip
 ```
 
 ### Step 4 — Extract embeddings
+
 > **Note:** This step only needs to be run **once** before launching training or evaluation pipelines unless new training or testing data is provided.
 Generate MobileCLIP embeddings for the training and testing image datasets. Extracted embeddings are automatically saved in S3 at `s3://oreyeon-models/Tala-temp/fod-pipeline/embeddings/`.
 
@@ -127,6 +130,7 @@ fod-sm-embed --split test
 ```
 
 ### Step 5 — Prepare classifier data
+
 > **Note:** This step only needs to be run **once** before launching training or evaluation pipelines unless new training or testing data is provided or new classes were added.
 Preprocesses the extracted embeddings to generate the following core artifacts: 
 
@@ -139,42 +143,64 @@ Saved automatically in S3 at `s3://oreyeon-models/Tala-temp/fod-pipeline/classif
 fod-sm-prepare
 ```
 
-# Stage 4 data prep: split + class weights + label encoding
-# writes label_encoder.json to s3://<bucket>/<prefix>/classifier-data/
-fod-sm-prepare
-
-# Stage 4 training (MLP only)
-fod-sm-train --epochs 100
-```
-
-SageMaker writes the raw training job output (including `model.tar.gz`)
-under its own job-name/timestamp folder in `classifier-results/` - that part
-can't be disabled. After the job finishes, `fod-sm-train` copies that
-`model.tar.gz` to a fixed key, `classifier-models/model.tar.gz`, which is
-overwritten on every run and always points at the latest trained model:
+# Step 6 — Train the classifier
 
 ```bash
-# Stage 4/5 evaluation: full hybrid metrics report against dual ground truth
-# (classifier fallback is on by default here too; pass --no-classifier-fallback to disable)
+fod-sm-train --epochs 100
+```
+After training, the latest model is automatically copied to `classifier-models/model.tar.gz` while previous training runs remain available under `classifier-results/<job-name>/`
+
+# Step 7 — Evaluate the hybrid pipeline
+Results are written to `s3://oreyeon-models/Tala-temp/fod-pipeline/hybrid-results/`.
+
+The hybrid evaluation pipeline combines fine-grained predictions from **MobileCLIP** with broader predictions from the **MLP Classifier**.
+Predictions are evaluated hierarchically across 3 levels to balance fine-grained precision with coarse-category fallback accuracy.
+
+---
+
+#### Evaluation Rules & Matching Logic
+
+A prediction is evaluated in order and marked **CORRECT** if it satisfies any of the following conditions:
+
+1. **MobileCLIP Fine Match:** MobileCLIP’s **Top-1** or **Top-2** prediction matches the fine-grained **MobileCLIP Ground Truth** *(e.g., predicted `Allen Key` = actual `Allen Key`)*.
+2. **MobileCLIP Coarse Match:** MobileCLIP’s **Top-1** or **Top-2** prediction matches the broader **Classifier Ground Truth** *(e.g., MobileCLIP predicted `Metal Rod` for an `Allen Key` image)*.
+3. **MLP Classifier Match:** The **MLP Classifier** output matches the broader **Classifier Ground Truth** *(e.g., the classifier predicted `Metal Rod` for an `Allen Key` image)*.
+
+> **Why this 3-tier system works:**
+> 
+> MobileCLIP supports specific object categories (like *Allen Key*), whereas the MLP Classifier operates on broader groups (like *Metal Rod*). 
+> 
+> * **Preserving Precision:** If MobileCLIP successfully predicts *Allen Key*, we capture the specific label.
+> * **Rewarding General Accuracy:** If MobileCLIP fails to predict *Allen Key* specifically but predicts *Metal Rod*, or if MobileCLIP misses completely but the MLP Classifier catches *Metal Rod*, we still count the prediction as **correct** because a general match is far better than a total misclassification.
+
+---
+
+#### Decision Flow
+
+```text
+Is MobileCLIP Top-1 or Top-2 == MobileCLIP Ground Truth?
+ ├── YES ──> Mark as CORRECT (Fine-grained MobileCLIP match)
+ └── NO
+      └── Is MobileCLIP Top-1 or Top-2 == Classifier Ground Truth?
+           ├── YES ──> Mark as CORRECT (Coarse MobileCLIP match)
+           └── NO
+                └── Is Classifier Output == Classifier Ground Truth?
+                     ├── YES ──> Mark as CORRECT (Classifier match)
+                     └── NO  ──> Mark as INCORRECT
+```bash
 fod-sm-evaluate
 ```
+# Local Inference
 
-`--classifier-weights-uri`/`--label-encoder-uri` both default to the paths
-above (`classifier-models/model.tar.gz`, `classifier-data/label_encoder.json`)
-under `S3_PROJECT_PREFIX` - pass either explicitly only to override, e.g. to
-evaluate a specific past run's artifacts instead of the latest, still
-available under `classifier-results/<job-name>/output/model.tar.gz`.
+Although training and evaluation are intended to run on SageMaker, inference can run locally on a single image.
 
-Results land in `s3://<bucket>/<prefix>/hybrid-results/`
-(`--output-uri` to override).
+```bash
+fod-infer path/to/image.png --yolo best.pt --mobileclip mobileclip_s0.pt --classifier-weights model.pth --label-encoder label_encoder.json
+```
 
-## Tests
+# Tests
 
 ```bash
 pytest
 ```
-# Local single-image inference (forward pass)
-fod-infer path/to/image.jpg --yolo best.pt --mobileclip mobileclip_s0.pt \
-    --classifier-weights FinalModel/model.pth \
-    --label-encoder PreparedData/label_encoder.json
-```
+
