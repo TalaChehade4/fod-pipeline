@@ -1,4 +1,4 @@
-"""Stage 1+2 orchestration: manifest -> YOLO crop -> MobileCLIP embed -> per-batch JSON.
+"""Manifest -> YOLO crop -> MobileCLIP embed -> per-batch JSON.
 """
 from __future__ import annotations
 
@@ -42,9 +42,9 @@ def process_manifest(
     output_dir: str | None = None,
     embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
 ) -> tuple:
-    """Run Stage 1+2 over every image in a manifest.
+    """Run over every image in a manifest.
 
-    YOLO detection/cropping still runs one image at a time, but the cropped
+    YOLO detection/cropping runs one image at a time, but the cropped
     detections are buffered and pushed through MobileCLIP embed_batch_size
     at a time - one batched forward pass is much faster than one per image.
 
