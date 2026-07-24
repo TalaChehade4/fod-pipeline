@@ -147,7 +147,7 @@ def main():
         f"/opt/ml/processing/input/classifier_labels/{classifier_label_map_filename}",
         "--yolo-tar", f"/opt/ml/processing/input/yolo/{yolo_tar_filename}",
         "--mobileclip", f"/opt/ml/processing/input/mobileclip/{mobileclip_filename}",
-        "--classifier-weights",
+        "--classifier-weights-tar",
         f"/opt/ml/processing/input/classifier/{classifier_weights_filename}",
         "--label-encoder", f"/opt/ml/processing/input/label_encoder/{label_encoder_filename}",
         "--output-dir", "/opt/ml/processing/output",

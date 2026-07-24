@@ -19,7 +19,7 @@ import csv
 import json
 import os
 
-from fod_pipeline.classifier.dataset import load_label_names
+from fod_pipeline.classifier.dataset import extract_classifier_weights, load_label_names
 from fod_pipeline.core.detection import extract_yolo_weights
 from fod_pipeline.core.labels import canonical_label, load_label_map
 from fod_pipeline.core.s3_io import extract_object_id, load_image_from_s3, load_manifest
@@ -226,6 +226,12 @@ def parse_args():
         "vocabulary into the dataset's ground-truth vocabulary",
     )
     parser.add_argument("--classifier-weights", type=str, required=False)
+    parser.add_argument(
+        "--classifier-weights-tar",
+        type=str,
+        default=None,
+        help="SageMaker model.tar.gz containing model.pth",
+    )
     parser.add_argument("--label-encoder", type=str, required=True)
     parser.add_argument("--output-dir", type=str, default="evaluation-results")
     parser.add_argument(
@@ -254,11 +260,15 @@ def parse_args():
             "--mobileclip-label-map": args.mobileclip_label_map,
             "--classifier-label-map": args.classifier_label_map,
             "--mobileclip": args.mobileclip,
-            "--classifier-weights": args.classifier_weights,
         }
         missing = [name for name, value in required.items() if not value]
         if missing:
             parser.error(f"the following arguments are required: {', '.join(missing)}")
+        if not args.classifier_weights and not args.classifier_weights_tar:
+            parser.error(
+                "one of the arguments --classifier-weights --classifier-weights-tar "
+                "is required"
+            )
 
     return args
 
@@ -272,11 +282,16 @@ def main():
         class_names = load_label_names(args.label_encoder)
     else:
         yolo_path = extract_yolo_weights(args.yolo_tar) if args.yolo_tar else args.yolo
+        classifier_weights_path = (
+            extract_classifier_weights(args.classifier_weights_tar)
+            if args.classifier_weights_tar
+            else args.classifier_weights
+        )
 
         pipeline = build_pipeline(
             yolo_path=yolo_path,
             mobileclip_path=args.mobileclip,
-            classifier_weights_path=args.classifier_weights,
+            classifier_weights_path=classifier_weights_path,
             label_encoder_path=args.label_encoder,
             mobileclip_model_name=args.mobileclip_model_name,
             prompts_path=args.prompts,

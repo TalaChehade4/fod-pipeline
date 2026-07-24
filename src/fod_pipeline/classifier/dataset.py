@@ -7,6 +7,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import tarfile
 
 import numpy as np
 import torch
@@ -128,6 +129,24 @@ def load_prepared_dataset(input_dir: str):
     val_data = torch.load(os.path.join(input_dir, "val.pt"))
     class_weights = torch.load(os.path.join(input_dir, "class_weights.pt"))
     return train_data, val_data, class_weights
+
+
+def extract_classifier_weights(
+    classifier_tar: str, extract_dir: str = "/opt/ml/processing/input/classifier"
+) -> str:
+    """Extract a SageMaker model.tar.gz (fod-sm-train's output, which also
+    bundles training_history.json/metrics.json/confusion_matrix.png from
+    SM_MODEL_DIR) and return the path to model.pth inside it."""
+    os.makedirs(extract_dir, exist_ok=True)
+
+    with tarfile.open(classifier_tar) as tar:
+        tar.extractall(extract_dir)
+
+    for root, _dirs, files in os.walk(extract_dir):
+        if "model.pth" in files:
+            return os.path.join(root, "model.pth")
+
+    raise FileNotFoundError(f"model.pth not found inside {classifier_tar}")
 
 
 def load_label_names(label_encoder_path: str) -> list:
