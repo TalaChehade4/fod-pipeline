@@ -1,11 +1,24 @@
-"""S3 image loading and manifest parsing.
+"""
+Amazon S3 and dataset I/O utilities.
 
-Manifest format (used throughout this project):
-    [
-        {"prefix": "s3://bucket/path/"},
-        "FRS0131/FRS0131_5081-B_IM0001.png",
-        ...
-    ]
+This module provides helper functions for interacting with Amazon S3 and
+handling dataset metadata used throughout the FOD pipeline. It centralizes
+common storage operations such as downloading and uploading files, copying
+objects within S3, loading images directly from S3, and reading SageMaker
+manifest files.
+
+Responsibilities:
+    - Create and reuse an Amazon S3 client.
+    - Detect and parse S3 URIs.
+    - Download and upload files between local storage and S3.
+    - Copy objects between S3 locations.
+    - Load images directly from S3 into PIL format.
+    - Read SageMaker manifest files.
+    - Extract Object IDs and batch IDs from dataset filenames.
+
+These utilities isolate all storage-related logic from the rest of the
+pipeline, allowing detection, embedding, and classification modules to work
+with images and metadata without directly interacting with Amazon S3.
 """
 from __future__ import annotations
 
