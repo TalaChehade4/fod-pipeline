@@ -1,10 +1,10 @@
-"""Launch the Stage 4/5 evaluation job: hybrid pipeline over a labeled test
-manifest, producing the full metrics report (Sections 4 and 5).
+"""Launches the SageMaker Processing job that evaluates the complete hybrid pipeline.
 
-Replaces three separate jobs - TestingClassifier/Launch_Job.py,
-MobileCLIP_Alone/Launch_Job.py, and the manual CSV-combination step in
-resultsOfHybrid/ - with one, since fod_pipeline.pipeline.evaluate already
-runs both models per image and compares against both ground truths itself.
+This script configures a PyTorchProcessor, downloads all required inputs
+(test manifest, label maps, model weights, and configuration files) from S3,
+runs evaluate.py inside the SageMaker container, and uploads the generated
+predictions and evaluation metrics back to S3. Default S3 locations are taken
+from config.py, but can be overridden through command-line arguments.
 """
 from __future__ import annotations
 
