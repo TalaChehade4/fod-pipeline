@@ -1,10 +1,10 @@
-"""Launch the Stage 1+2 embedding-extraction job (YOLO crop + MobileCLIP embed).
+"""Launches the SageMaker Processing job that generates MobileCLIP embeddings.
 
-Used for both training-data and test-data extraction - point
---manifest-uri/--label-map-uri/--output-uri at whichever dataset you're
-preparing. Replaces Preprocessing1/launch_job.py and
-PreparingDataForTesting/Launch_Job_PreTesting.py, which ran identical code
-against different S3 paths.
+This script configures a PyTorchProcessor, downloads the required inputs
+(manifest, label map, YOLO weights, and MobileCLIP weights) from S3,
+runs preprocess.py inside the SageMaker container, and uploads the
+generated embedding files back to S3. Default S3 locations are taken
+from config.py, but can be overridden through command-line arguments.
 """
 from __future__ import annotations
 
