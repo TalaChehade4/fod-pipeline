@@ -1,6 +1,23 @@
-"""Classifier data preparation: load embeddings, encode labels, split, class weights.
+"""
+Embedding dataset preparation utilities.
 
-Default split is 90/10 train/validation
+This module provides helper classes and functions for preparing MobileCLIP
+embeddings for classifier training. It loads embedding files generated during
+the preprocessing stage, encodes class labels into numerical indices, splits
+the dataset into training and validation sets, computes class weights for
+imbalanced learning, creates PyTorch datasets and dataloaders, and saves the
+processed datasets for later reuse.
+
+Responsibilities:
+    - Load embedding JSON files.
+    - Convert embeddings into NumPy arrays.
+    - Encode string labels into integer class indices.
+    - Split data into training and validation sets.
+    - Compute balanced class weights.
+    - Create PyTorch datasets and dataloaders.
+    - Save and reload prepared datasets.
+    - Extract trained classifier weights from SageMaker model archives.
+    - Load label names for evaluation and visualization.
 """
 from __future__ import annotations
 
@@ -34,10 +51,6 @@ class EmbeddingDataset(Dataset):
 def load_embeddings(input_dir: str):
     """Read every embedding JSON file under input_dir - each file may hold
     one sample or a list of samples - into (X, y) arrays.
-
-    Only matches *_embeddings.json, the naming preprocess.py writes -
-    input_dir also holds failures.json when some images failed Stage 1+2,
-    and those records have no "embedding"/"label" keys.
     """
     embeddings = []
     labels = []
@@ -134,9 +147,7 @@ def load_prepared_dataset(input_dir: str):
 def extract_classifier_weights(
     classifier_tar: str, extract_dir: str = "/opt/ml/processing/input/classifier"
 ) -> str:
-    """Extract a SageMaker model.tar.gz (fod-sm-train's output, which also
-    bundles training_history.json/metrics.json/confusion_matrix.png from
-    SM_MODEL_DIR) and return the path to model.pth inside it."""
+    """Extract a SageMaker model.tar.gz and return the path to model.pth inside it."""
     os.makedirs(extract_dir, exist_ok=True)
 
     with tarfile.open(classifier_tar) as tar:
