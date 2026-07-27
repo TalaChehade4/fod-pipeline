@@ -1,8 +1,25 @@
-"""Local inference: single image -> hybrid prediction set (Stages 1-5).
+"""
+Hybrid FOD inference pipeline combining object detection,
+vision-language classification, and learned feature classification.
 
-Detect, crop, and embed once, then run both the MobileCLIP Top-2 prediction
-and the classifier prediction off that one embedding, and assemble the
-3-candidate hybrid prediction set (Stage 5).
+Pipeline flow:
+    1. YOLO detects the FOD object and extracts a cropped region.
+    2. MobileCLIP converts the crop into a visual embedding and performs
+       zero-shot classification using text prompts.
+    3. The same MobileCLIP image embedding is passed to a trained MLP
+       classifier for supervised prediction.
+    4. The final prediction exposes both MobileCLIP candidates and the
+       classifier output for hybrid evaluation.
+
+The pipeline loads all models once during initialization and provides
+a lightweight `predict()` method for per-image inference.
+
+Supported features:
+    - GPU/CPU execution
+    - FP16 inference on CUDA devices
+    - configurable MobileCLIP prompts
+    - synonym mapping between MobileCLIP vocabulary and dataset labels
+    - latency measurement for each pipeline stage
 """
 from __future__ import annotations
 
