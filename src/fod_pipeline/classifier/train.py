@@ -1,8 +1,40 @@
-"""Stage 4 classifier training (MLP2 only).
+"""
+Train the MLP classifier on MobileCLIP embeddings.
 
-Input: prepared embeddings (train.pt/val.pt/class_weights.pt/label_encoder.json,
-produced by fod_pipeline.classifier.dataset). Output: trained model weights +
-validation metrics.
+This script performs the complete classifier training pipeline. It loads the
+prepared embedding dataset, initializes the MLP neural network classifier,
+trains the model using weighted cross-entropy loss, applies early stopping,
+saves the best model checkpoint, and evaluates the final model on the
+validation set.
+
+Training pipeline:
+
+    PreparedData/
+        ├── train.pt
+        ├── val.pt
+        ├── class_weights.pt
+        └── label_encoder.json
+
+                ↓
+
+        Load dataset
+
+                ↓
+
+        Create DataLoaders
+
+                ↓
+
+        Train MLP classifier
+
+                ↓
+
+        Save:
+            - model.pth
+            - training_history.json
+            - metrics.json
+            - classification_report.json
+            - confusion_matrix.png
 """
 from __future__ import annotations
 
