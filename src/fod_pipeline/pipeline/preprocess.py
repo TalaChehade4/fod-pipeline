@@ -1,4 +1,40 @@
-"""Manifest -> YOLO crop -> MobileCLIP embed -> per-batch JSON.
+"""
+Generate MobileCLIP embeddings from images listed in an S3 manifest.
+
+Pipeline stages:
+
+    1. Load image paths from a manifest file.
+    2. Retrieve images from S3.
+    3. Extract object IDs and corresponding labels.
+    4. Run YOLO object detection to locate the FOD object.
+    5. Crop the detected region with an optional expansion margin.
+    6. Encode cropped images using MobileCLIP into feature embeddings.
+    7. Save embeddings grouped by batch as JSON files.
+
+The generated embeddings are later used to train the downstream
+classifier.
+
+The pipeline supports:
+    - GPU/CPU execution
+    - FP16 inference on CUDA devices
+    - Batched MobileCLIP encoding for faster processing
+    - Checkpoint saving during long SageMaker jobs
+    - Failure logging without stopping the entire run
+
+Input:
+    - S3 manifest containing image paths
+    - Object ID -> label mapping
+    - YOLO detector weights
+    - MobileCLIP weights
+
+Output:
+    - {batch_id}_embeddings.json files containing:
+        {
+            "image": image filename,
+            "objectID": object identifier,
+            "label": ground truth label,
+            "embedding": MobileCLIP feature vector
+        }
 """
 from __future__ import annotations
 
@@ -49,14 +85,7 @@ def process_manifest(
     at a time - one batched forward pass is much faster than one per image.
 
     A single image's failure (corrupt file, transient S3 error, unexpected
-    filename) is logged and skipped rather than aborting the whole run. If
-    output_dir is given, results are checkpointed to disk every
-    CHECKPOINT_EVERY images so a crash partway through a large manifest
-    doesn't lose everything already processed.
-
-    Returns (batch_results, failures), where batch_results is
-    {batch_id: [record, ...]} and each record is
-    {"image", "objectID", "label", "embedding"}.
+    filename) is logged and skipped rather than aborting the whole run.
     """
     label_map = load_label_map(label_map_path)
     prefix, image_paths = load_manifest(manifest_path)
