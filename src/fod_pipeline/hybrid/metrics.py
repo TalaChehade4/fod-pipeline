@@ -1,13 +1,35 @@
-"""Stage 5 - hybrid evaluation: dual ground truth, OR-rule, and the three
-metric groups.
+"""
+Evaluation utilities for the hybrid FOD classification pipeline.
 
-Each image is evaluated against two ground truths, since MobileCLIP and the
-classifier predict over different label spaces:
-  - mobileclip_gt / mobileclip_top1 / mobileclip_top2 - MobileCLIP's own taxonomy
-  - classifier_gt / classifier_pred                    - the classifier's taxonomy
+This module compares MobileCLIP predictions and classifier predictions
+against their corresponding ground truths and produces evaluation metrics.
 
-Hybrid rule: an image is correctly recognized if EITHER model succeeds
-against its own ground truth.
+The pipeline uses two classification sources:
+
+    1. MobileCLIP:
+        - Ground Truth A taxonomy
+        - Evaluated using Top-1 and Top-2 matching
+
+    2. MLP classifier:
+        - Ground Truth B taxonomy
+        - Evaluated using standard classification metrics
+
+The hybrid evaluation follows an OR rule:
+    An image is considered correctly classified if either:
+        - MobileCLIP predicts the correct category
+        - The classifier predicts the correct category
+
+Metrics produced:
+    - MobileCLIP Top-1 / Top-2 accuracy
+    - Classifier accuracy, precision, recall, F1
+    - Hybrid accuracy
+    - Hybrid balanced accuracy
+    - Model contribution breakdown
+    - Average inference latency
+    - YOLO detection rate
+
+This module operates only on prediction records generated during
+evaluation and does not perform model inference.
 """
 from __future__ import annotations
 
@@ -22,14 +44,8 @@ from fod_pipeline.core.labels import normalize_label
 def mobileclip_correct(record: dict, classifier_fallback: bool = False) -> bool:
     """Top-1 or Top-2 match against MobileCLIP's own ground truth (Ground Truth A).
 
-    classifier_fallback (experimental, off by default): when neither top-1 nor
-    top-2 matches Ground Truth A, also accept a match against Ground Truth B
-    (classifier_gt). Ground Truth A was recently split into finer classes
-    that used to be joined (e.g. manufactured wood/wood, bullet/bullet
-    casings); the classifier's own taxonomy still has some of these joined,
-    so this recovers matches that MobileCLIP's fixed prompt vocabulary was
-    never going to distinguish in the first place. Classes split on *both*
-    sides (rubber chunks vs. tire chunks) stay unresolved by this fallback.
+    When neither top-1 nor top-2 matches Ground Truth A, also accept a match against Ground Truth B
+    (classifier_gt). 
     """
     if (
         record["mobileclip_top1"] == record["mobileclip_gt"]
@@ -70,7 +86,7 @@ def correct_source(record: dict, classifier_fallback: bool = False) -> str:
 
 
 def compute_mobileclip_metrics(records: list, classifier_fallback: bool = False) -> dict:
-    """Section 5.1 - Top-1 accuracy, Top-2 accuracy, average inference time."""
+    """Top-1 accuracy, Top-2 accuracy, average inference time."""
     n = len(records)
     top1_hits = sum(r["mobileclip_top1"] == r["mobileclip_gt"] for r in records)
     top2_hits = sum(mobileclip_correct(r, classifier_fallback) for r in records)
@@ -91,12 +107,8 @@ def compute_mobileclip_metrics(records: list, classifier_fallback: bool = False)
 
 
 def compute_hybrid_metrics(records: list, classifier_fallback: bool = False) -> dict:
-    """Section 5.3 - hybrid accuracy (OR rule), hybrid balanced accuracy,
+    """Hybrid accuracy (OR rule), hybrid balanced accuracy,
     average end-to-end pipeline time, YOLO detection rate.
-
-    Hybrid balanced accuracy is macro-averaged over the classifier's own
-    label taxonomy (classifier_gt) - the coarser, canonical category space
-    both models are ultimately being judged against.
     """
     n = len(records)
     hybrid_flags = [is_hybrid_correct(r, classifier_fallback) for r in records]
@@ -141,16 +153,6 @@ def build_metrics_report(
     classifier_y_pred=None,
     classifier_fallback: bool = False,
 ) -> dict:
-    """Assemble all three metric groups (5.1/5.2/5.3) into one report.
-
-    classifier_y_true/y_pred are the full encoded-label arrays for the
-    classifier's own evaluation (Section 5.2, precision/recall/F1 etc) - if
-    omitted, that section is left out of the report.
-
-    classifier_fallback (experimental, off by default) - see
-    mobileclip_correct() - widens the Section 5.1/5.3 MobileCLIP matching
-    with a second-chance comparison against Ground Truth B.
-    """
     report = {
         "mobileclip": compute_mobileclip_metrics(records, classifier_fallback),
         "hybrid": compute_hybrid_metrics(records, classifier_fallback),
