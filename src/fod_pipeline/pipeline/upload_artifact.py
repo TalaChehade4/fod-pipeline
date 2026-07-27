@@ -1,5 +1,22 @@
-"""Upload a local file to its default S3 location, computed from `.env`
-(`S3_BUCKET` + `S3_PROJECT_PREFIX` via `config.py`'s `S3Paths`)
+"""
+Upload pipeline artifacts to their configured S3 locations.
+
+This utility provides a single command-line interface for uploading
+different types of project files:
+
+    - YOLO detector weights
+    - MobileCLIP model weights
+    - Dataset manifests
+    - Label mappings
+    - Database CSV files
+    - Join configurations
+    - MobileCLIP category mappings
+
+The destination S3 path is not hardcoded. It is resolved from the
+project configuration module.
+
+The script validates required arguments and uploads files using the
+central S3 I/O utilities.
 """
 from __future__ import annotations
 
