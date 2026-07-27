@@ -1,5 +1,28 @@
-"""Stage 4 classifier evaluation, shared by post-training validation and
-standalone test-set evaluation
+"""
+Classifier evaluation and inference utilities.
+
+This module provides functions for evaluating a trained classifier model.
+It supports batch inference, prediction extraction, latency measurement,
+classification metrics computation, confusion matrix generation, and
+visualization.
+
+The module is used after training to measure model performance on validation
+or test datasets.
+
+Responsibilities:
+
+    - Run inference without gradient computation.
+    - Extract predicted and true labels.
+    - Measure inference latency and throughput.
+    - Compute classification metrics:
+        * Accuracy
+        * Balanced accuracy
+        * Precision
+        * Recall
+        * F1-score
+    - Generate classification reports.
+    - Generate confusion matrices.
+    - Save confusion matrix visualizations.
 """
 from __future__ import annotations
 
