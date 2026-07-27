@@ -1,4 +1,19 @@
-"""Object-ID -> label resolution: manifest parsing, join-config lookup, CSV fallback.
+"""
+Label and metadata utilities.
+
+This module provides helper functions for loading, converting, and managing
+object labels used throughout the FOD pipeline. It supports reading dataset
+manifests, resolving Object IDs to labels, loading label mappings from JSON
+or CSV files, grouping and reversing mappings, and normalizing labels for
+consistent comparisons.
+
+Responsibilities:
+    - Extract Object IDs from SageMaker manifest files.
+    - Load Object ID ↔ label mappings from JSON or CSV.
+    - Resolve labels using configurable lookup priorities.
+    - Group and reverse label mappings.
+    - Normalize labels into a consistent format.
+    - Apply synonym mappings between MobileCLIP categories and dataset labels.
 """
 from __future__ import annotations
 
@@ -42,7 +57,7 @@ def load_join_config(path: Path) -> dict:
 
 
 def load_csv_id_name_map(path: Path, id_column: str, name_column: str = "name") -> dict:
-    """e.g. trainingdata_old.csv (id_column='trainingID') or
+    """trainingdata_old.csv (id_column='trainingID') or
     testingdata_old.csv (id_column='testingID')."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -111,7 +126,7 @@ def normalize_label(label) -> str:
 
 
 def canonical_label(label: str, synonym_mapping: dict) -> str:
-    """Map a label through a synonym table (e.g. MobileCLIP category name ->
+    """Map a label through a synonym table (MobileCLIP category name ->
     dataset label), normalizing both sides. Labels absent from the mapping
     pass through normalized but otherwise unchanged.
     """
@@ -121,9 +136,8 @@ def canonical_label(label: str, synonym_mapping: dict) -> str:
 
 def load_synonym_mapping(path: Path) -> dict:
     """Load a {"category_to_objects": {category: [dataset_label, ...]}} file
-    (e.g. mobileclip_category_mapping_new.json) into a flat, normalized
-    {category: dataset_label} map. Only the first dataset label per category
-    is used - these mappings are expected to be 1:1 in practice.
+    (mobileclip_category_mapping_new.json) into a flat, normalized
+    {category: dataset_label} map.
     """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
