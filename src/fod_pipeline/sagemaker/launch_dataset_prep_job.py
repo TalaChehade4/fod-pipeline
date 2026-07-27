@@ -1,7 +1,13 @@
-"""Launch the Stage 4 dataset-prep job: embeddings -> train/val split,
-class weights, label encoding.
+"""Launch a SageMaker Processing job for classifier dataset preparation.
 
-Replaces Preprocessing2/launch_job2.py.
+This script runs the classifier data preparation step remotely on SageMaker.
+It sends the embedding files stored in S3 to a PyTorch processing instance,
+executes the dataset preparation script, and saves the prepared training and
+validation datasets back to S3.
+
+The job uses the existing `fod_pipeline` package as a dependency so the
+processing container can import project modules without requiring a custom
+Docker image.
 """
 from __future__ import annotations
 
