@@ -1,8 +1,10 @@
-"""Launch the Stage 4 classifier training job (MLP2 only).
+"""Launches the SageMaker Training job that trains the MLP classifier.
 
-Replaces TrainingClassifier/launch_training.py. The old --architecture
-switch (linear/mlp1/mlp2) is gone - MLP2 is the only architecture that
-ships to production.
+This script configures a SageMaker PyTorch estimator, trains the classifier
+using the prepared embedding dataset stored in S3, saves the resulting model
+artifact, and copies it to a fixed S3 location for easy use by later stages
+of the pipeline. Training settings can be customized through command-line
+arguments, while default paths are loaded from config.py.
 """
 from __future__ import annotations
 
@@ -62,11 +64,6 @@ def main():
         logs=True,
     )
 
-    # estimator.fit() writes model.tar.gz under a job-name/timestamp folder
-    # that SageMaker generates and appends to output_path itself - there's no
-    # way to suppress that. Copy the artifact to a fixed key afterwards so
-    # downstream steps (fod-sm-evaluate) always have one predictable path,
-    # instead of having to search classifier-results/ for the latest job.
     fixed_model_uri = config.s3.classifier_models + "model.tar.gz"
     copy_within_s3(estimator.model_data, fixed_model_uri)
     print(f"Model artifact: {estimator.model_data}")
