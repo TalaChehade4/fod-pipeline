@@ -1,26 +1,29 @@
-"""Stage 0: build an object_id -> label label_map.json from a manifest plus
-a lookup source.
+"""
+Build object ID to label mappings from dataset manifests.
 
-Every other stage (fod-preprocess, fod-evaluate, their fod-sm-* equivalents)
-only *reads* label_map.json - nothing produces it. This fills that gap.
+This script creates the ground-truth label map used by downstream
+classification and evaluation stages.
 
-The two ground truths this pipeline needs both come from this one builder:
-  - classifier ground truth: --join-config (curated overrides) checked first,
-    --csv (e.g. trainingdata_old.csv/testingdata_old.csv) fills the rest
-  - MobileCLIP ground truth: --csv only, no --join-config
+Workflow:
 
---manifest, --csv, --join-config, and --output each accept either a local
-path or an s3:// URI - s3:// inputs are downloaded to a temp file before
-reading, and an s3:// --output is uploaded after writing, so the whole
-run-only-against-S3 workflow needs no manual download/upload step.
+    1. Load an image manifest containing S3 image paths.
+    2. Extract object IDs from image filenames.
+    3. Resolve each object ID to its corresponding class label using:
+          - A curated join configuration (highest priority)
+          - A CSV database fallback
+    4. Save the resulting mapping as JSON.
+    5. Optionally upload the generated label map to S3.
 
---manifest, --csv, --id-column, --join-config, and --output can additionally all be left
-out entirely in favor of --split (+ --ground-truth for --output/--join-config)
-- each then defaults to the manifests/<split>_*.json (or trainingdata_old.csv/
-testingdata_old.csv/join_config.json) path under S3_BUCKET/S3_PROJECT_PREFIX
-that fod-sm-embed/fod-sm-evaluate/fod-upload already read/write by default,
-so nothing needs typing out once those files are uploaded once via
-`fod-upload --kind database-csv/join-config`.
+Output format:
+
+    {
+        "5081-B": "bolt",
+        "2061-B": "coin",
+        ...
+    }
+
+When using --split, default paths are automatically resolved
+from the project S3 configuration.
 """
 from __future__ import annotations
 
