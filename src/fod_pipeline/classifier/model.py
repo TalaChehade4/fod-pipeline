@@ -1,6 +1,4 @@
-"""Stage 4 classifier architecture.
-
-Only MLP ships to production.
+"""The classifier architecture
 """
 from __future__ import annotations
 
