@@ -1,8 +1,18 @@
-"""Stage 4 data-prep CLI: embeddings.json (Stage 1+2 output) -> train/val
-split, class weights, label encoding.
+"""
+Prepare embedding datasets for classifier training.
 
-Input: directory of embedding JSON files (fod_pipeline.pipeline.preprocess
-output). Output: train.pt/val.pt/class_weights.pt/label_encoder.json.
+This script converts the embedding JSON files generated during the MobileCLIP
+preprocessing stage into a training-ready dataset for the classifier.
+
+The preparation pipeline performs the following steps:
+
+    1. Load all embedding files.
+    2. Encode string labels into integer class indices.
+    3. Split the dataset into training and validation sets.
+    4. Compute balanced class weights.
+    5. Save the processed datasets and label encoder.
+
+The resulting files can be used directly by the classifier training script.
 """
 from __future__ import annotations
 
