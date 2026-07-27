@@ -1,7 +1,34 @@
-"""Stage 1 - YOLO object detection + cropping.
+"""
+YOLO detection and cropping utilities.
 
-Locates the object of interest, crops it with a 20% expansion margin, and
-hands the crop to Stage 2 (MobileCLIP embedding).
+This module contains helper functions for loading the YOLOv5 object detection
+model, extracting model weights from SageMaker model archives, and cropping
+detected objects from images.
+
+Responsibilities:
+    - Load a trained YOLOv5 model for inference.
+    - Extract ``best.pt`` from a SageMaker ``model.tar.gz`` archive.
+    - Select the highest-confidence detection.
+    - Expand the detected bounding box by a configurable margin.
+    - Return the cropped object image and its bounding box coordinates.
+
+The cropped image produced by this module is passed to the embedding stage,
+where MobileCLIP generates a feature vector for classification.
+
+Typical pipeline:
+
+    Image
+      ↓
+    YOLOv5 Detection
+      ↓
+    Highest-confidence bounding box
+      ↓
+    Expanded crop (default: 20% padding)
+      ↓
+    Cropped image → MobileCLIP embedding
+
+This module performs inference only; it does not train YOLO models or manage
+datasets.
 """
 from __future__ import annotations
 
@@ -17,6 +44,7 @@ DEFAULT_EXPANSION = 0.2
 
 
 def load_yolo(model_path: str, device: torch.device | None = None, fp16: bool = False):
+    """Load the customized YOLO model"""
     device = device or get_device()
 
     model = torch.hub.load(
