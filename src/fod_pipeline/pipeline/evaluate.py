@@ -1,16 +1,44 @@
-"""Stage 4/5 orchestration: run the hybrid pipeline over a labeled test
-manifest and produce the full metrics report (Sections 4 and 5).
+"""
+Evaluate the complete FOD hybrid inference pipeline.
 
-Each image needs two ground truths, since MobileCLIP and the classifier
-predict over different label spaces (see fod_pipeline.hybrid.metrics):
-  - mobileclip_gt : Ground Truth A, MobileCLIP's own taxonomy
-  - classifier_gt : Ground Truth B, the classifier's taxonomy
+This script evaluates the combined:
+    1. YOLO detector
+    2. MobileCLIP zero-shot classifier
+    3. Embedding-based MLP classifier
 
-This single script replaces what used to be three separate pieces wired
-together by hand-matched CSVs: MobileCLIP_Alone's evaluation loop,
-TestingClassifier's evaluation loop, and resultsOfHybrid's CSV-combination
-step. Running one HybridPipeline per image and comparing it against both
-ground truths in the same pass removes that manual matching entirely.
+over all images listed in a manifest.
+
+For every image:
+    - Loads the image from S3
+    - Runs YOLO detection and cropping
+    - Generates MobileCLIP predictions
+    - Generates classifier predictions
+    - Compares predictions against their corresponding ground truths
+    - Records latency measurements
+
+The evaluation supports two ground truth systems:
+
+    Ground Truth A:
+        MobileCLIP taxonomy
+
+    Ground Truth B:
+        Classifier taxonomy
+
+A hybrid correctness rule determines whether either model
+correctly identifies the object.
+
+Outputs:
+    predictions.csv
+        Per-image predictions and timings.
+
+    metrics_report.json
+        Aggregate accuracy, F1, latency and hybrid metrics.
+
+    failures.json
+        Images that failed during inference.
+
+The script can also recompute metrics from an existing
+predictions.csv without rerunning inference.
 """
 from __future__ import annotations
 
@@ -60,8 +88,7 @@ def evaluate_manifest(
     partway through a large manifest doesn't lose everything already
     processed. A single image's failure (corrupt file, transient S3 error,
     unexpected filename) is logged and skipped rather than aborting the
-    whole run - matching the resilience the original MobileCLIP_Alone
-    evaluation script had, extended here to the classifier/hybrid path too.
+    whole run.
 
     Each row also gets a hybrid_correct column (the same OR-rule used for
     the aggregate hybrid_accuracy metric) so individual predictions can be
