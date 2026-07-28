@@ -22,6 +22,8 @@ The hybrid evaluation follows an OR rule:
 Metrics produced:
     - MobileCLIP Top-1 / Top-2 accuracy
     - Classifier accuracy, precision, recall, F1
+    - Classifier confusion matrix and per-category precision/recall/F1/support
+      (when class names are supplied)
     - Hybrid accuracy
     - Hybrid balanced accuracy
     - Model contribution breakdown
@@ -37,7 +39,11 @@ from collections import defaultdict
 
 import numpy as np
 
-from fod_pipeline.classifier.evaluate import compute_classification_metrics
+from fod_pipeline.classifier.evaluate import (
+    classification_report_dict,
+    compute_classification_metrics,
+    compute_confusion_matrix,
+)
 from fod_pipeline.core.labels import normalize_label
 
 
@@ -151,16 +157,36 @@ def build_metrics_report(
     records: list,
     classifier_y_true=None,
     classifier_y_pred=None,
+    classifier_class_names: list = None,
     classifier_fallback: bool = False,
 ) -> dict:
+    """Build the aggregate metrics report.
+
+    When `classifier_class_names` is supplied alongside the y_true/y_pred
+    arrays, the classifier section is extended with a confusion matrix and
+    a per-category precision/recall/F1/support breakdown (sklearn's
+    classification_report), matching what classifier/train.py already
+    produces for standalone classifier validation.
+    """
     report = {
         "mobileclip": compute_mobileclip_metrics(records, classifier_fallback),
         "hybrid": compute_hybrid_metrics(records, classifier_fallback),
     }
 
     if classifier_y_true is not None and classifier_y_pred is not None:
-        report["classifier"] = compute_classification_metrics(
+        classifier_report = compute_classification_metrics(
             classifier_y_true, classifier_y_pred
         )
+
+        if classifier_class_names is not None:
+            labels = list(range(len(classifier_class_names)))
+            classifier_report["confusion_matrix"] = compute_confusion_matrix(
+                classifier_y_true, classifier_y_pred, labels=labels
+            ).tolist()
+            classifier_report["per_category"] = classification_report_dict(
+                classifier_y_true, classifier_y_pred, classifier_class_names, labels=labels
+            )
+
+        report["classifier"] = classifier_report
 
     return report
