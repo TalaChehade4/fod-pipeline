@@ -130,14 +130,19 @@ def latency_summary(latencies: np.ndarray) -> dict:
     }
 
 
-def classification_report_dict(y_true, y_pred, class_names) -> dict:
+def classification_report_dict(y_true, y_pred, class_names, labels=None) -> dict:
     return classification_report(
-        y_true, y_pred, target_names=class_names, output_dict=True, zero_division=0
+        y_true,
+        y_pred,
+        labels=labels,
+        target_names=class_names,
+        output_dict=True,
+        zero_division=0,
     )
 
 
-def compute_confusion_matrix(y_true, y_pred):
-    return confusion_matrix(y_true, y_pred)
+def compute_confusion_matrix(y_true, y_pred, labels=None):
+    return confusion_matrix(y_true, y_pred, labels=labels)
 
 
 def save_confusion_matrix_plot(cm, class_names, output_path, title="Confusion Matrix"):
