@@ -46,6 +46,7 @@ import argparse
 import csv
 import json
 import os
+import numpy as np
 
 from fod_pipeline.classifier.dataset import extract_classifier_weights, load_label_names
 from fod_pipeline.core.detection import extract_yolo_weights
@@ -53,6 +54,7 @@ from fod_pipeline.core.labels import canonical_label, load_label_map
 from fod_pipeline.core.s3_io import extract_object_id, load_image_from_s3, load_manifest
 from fod_pipeline.hybrid.metrics import build_metrics_report, is_hybrid_correct
 from fod_pipeline.pipeline.infer import build_pipeline
+from fod_pipeline.classifier.evaluate import save_confusion_matrix_plot
 
 RECORD_FIELDS = [
     "image",
@@ -342,6 +344,16 @@ def main():
     if not records:
         report = {"error": "no images processed successfully", "num_failures": len(failures)}
         save_metrics_report(report, args.output_dir)
+        if "classifier" in report and "confusion_matrix" in report["classifier"]:
+   
+            cm = np.array(report["classifier"]["confusion_matrix"])
+            save_confusion_matrix_plot(
+                cm,
+                class_names,
+                os.path.join(args.output_dir, "confusion_matrix.png"),
+                title="Hybrid Pipeline Confusion Matrix",
+            )
+
         print(json.dumps(report, indent=2))
         return
 
@@ -351,6 +363,7 @@ def main():
         records,
         classifier_y_true,
         classifier_y_pred,
+        classifier_class_names=class_names,
         classifier_fallback=args.classifier_fallback,
     )
     report["num_failures"] = len(failures)
