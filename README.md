@@ -252,7 +252,7 @@ Once the YOLO detector, MobileCLIP model, and MLP classifier are trained, they c
 ### Prerequisites
 
 | File | Description | Location |
-| :--- | :--- || :--- |
+| :--- | :--- | :--- |
 | `best.pt` | Trained YOLO detector | s3://oreyeon-models/Tala-temp/fod-pipeline/weights/yolo/model.tar.gz|
 | `mobileclip_s0.pt` | MobileCLIP checkpoint | s3://oreyeon-models/Tala-temp/fod-pipeline/weights/mobileclip/mobileclip_s0.pt|
 | `model.pth` | Trained MLP classifier | s3://oreyeon-models/Tala-temp/fod-pipeline/classifier-models/model.tar.gz|
