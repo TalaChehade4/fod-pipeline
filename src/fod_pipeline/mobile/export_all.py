@@ -19,14 +19,6 @@ Produces:
         mobileclip_text_bank.json
         FODClassifier.mlpackage
         classifier_labels.json
-
-Usage:
-    fod-export-mobile \\
-        --yolo best.pt \\
-        --mobileclip mobileclip_s0.pt \\
-        --classifier-weights model.pth \\
-        --label-encoder label_encoder.json \\
-        --output-dir mobile_models
 """
 from __future__ import annotations
 
