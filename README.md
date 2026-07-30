@@ -270,12 +270,7 @@ pip install -e ".[mobile]"
 #### Step 2 – Export all models
 
 ```bash
-fod-export-mobile \
-  --yolo best.pt \
-  --mobileclip mobileclip_s0.pt \
-  --classifier-weights model.pth \
-  --label-encoder label_encoder.json \
-  --output-dir mobile_models
+fod-export-mobile --yolo best.pt --mobileclip mobileclip_s0.pt --classifier-weights model.pth --label-encoder label_encoder.json --output-dir mobile_models
 ```
 By default, this exports both Android (ONNX) and iOS (Core ML) models. To export for a specific platform only, use the --formats flag:
 
