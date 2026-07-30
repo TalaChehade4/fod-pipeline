@@ -118,7 +118,7 @@ Upload the required dataset manifests, database files, and join mappings used to
 ```bash
 # --- 1. Dataset Manifests ---
 # Saved automatically as 'train_manifest.json' (Classifier training data)
-fod-upload train_manifest.manifest --kind manifest --split train in S3
+fod-upload train_manifest.manifest --kind manifest --split train
 
 # Saved automatically as 'test_manifest.json' (MobileCLIP & classifier evaluation data)
 fod-upload test_manifest.manifest --kind manifest --split test
@@ -244,23 +244,8 @@ The three trained models (YOLO detector, MobileCLIP image encoder, MLP classifie
 converted into formats mobile apps load directly, so the hybrid pipeline can run **on-device**
 instead of calling a server:
 
-* **Android** → [ONNX](https://onnx.ai/), run with [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/) (`onnxruntime-android`)
+* **Android** → [ONNX](https://onnx.ai/)
 * **iOS** → [Core ML](https://developer.apple.com/documentation/coreml)
-
-TFLite was the original plan for Android, but it was dropped in favor of ONNX Runtime: this
-project's models already export cleanly to ONNX, ONNX Runtime Mobile is an equally
-production-ready Android/iOS runtime, and going straight to ONNX skips an entire buggy
-conversion hop (`onnx2tf`, ONNX→TensorFlow→TFLite) that turned out to hard-fail on
-MobileCLIP's attention block - see [Limitations](#limitations) for what that looked like
-before the switch.
-
-> **Platform support (verified, not assumed):** every export path below was actually run
-> end-to-end while building this feature. All three `fod-export-*` commands, for both
-> formats, run successfully on Windows (where this was built) - the one remaining
-> platform-specific behavior is that Core ML falls back from `.mlpackage` to the older
-> `.mlmodel` format on Windows, since `coremltools`' Windows wheel has no compiled native
-> extensions. See [Limitations](#limitations) for the exact reason and how to get a
-> `.mlpackage` instead.
 
 ### What gets converted, and what doesn't
 
