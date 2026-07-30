@@ -240,67 +240,34 @@ fod-infer path/to/image.png --yolo best.pt --mobileclip mobileclip_s0.pt --class
 
 ## Mobile Model Conversion (Android / iOS)
 
-The three trained models (YOLO detector, MobileCLIP image encoder, MLP classifier) can be
-converted into formats mobile apps load directly, so the hybrid pipeline can run **on-device**
-instead of calling a server:
+Once the YOLO detector, MobileCLIP model, and MLP classifier are trained, they can be converted into mobile-friendly formats for standalone deployment on Android and iOS. The exported models preserve the complete hybrid inference pipeline locally, allowing high-performance on-device execution with zero server communication required.
 
-* **Android** → [ONNX](https://onnx.ai/)
-* **iOS** → [Core ML](https://developer.apple.com/documentation/coreml)
+### Supported Export Formats
 
-### What gets converted, and what doesn't
+| Platform | Format |
+| :--- | :--- |
+| **Android** | `ONNX` |
+| **iOS** | `Core ML` |
 
-| Model | Converted to | Notes |
-| :--- | :--- | :--- |
-| YOLO detector | `.onnx` + `.mlpackage` | Exported via `ultralytics`'s built-in exporter, NMS baked into the graph for both formats (`nms=True`). |
-| MobileCLIP **image** encoder | `.onnx` + `.mlpackage` | Input: a 256×256 RGB image scaled to `[0, 1]` (no mean/std normalization - MobileCLIP's own preprocessing is just resize + `ToTensor()`). Output: a 512-dim, L2-normalized embedding, matching `encode_image(..., normalize=True)` in `core/embedding.py`. |
-| MobileCLIP **text** encoder | *not converted* — precomputed instead | See below. |
-| MLP classifier | `.onnx` + `.mlpackage` | Softmax is baked into the export, so the model outputs class probabilities, not raw logits. |
+### Prerequisites
 
-Both formats reproduce the original PyTorch math essentially exactly (measured max
-difference ~6e-8, i.e. float32 rounding noise - see
-[Verifying a conversion](#verifying-a-conversion)): neither ONNX Runtime nor Core ML needed
-any numerical approximation to represent the models, unlike the abandoned TFLite path.
-
-**Why the text encoder isn't converted:** MobileCLIP classifies an image by comparing its
-embedding against text embeddings of the fixed prompts in
-`src/fod_pipeline/data/mobileclip_prompts.json` (82 categories × 8 templates). Since that
-prompt list is fixed at build time, there's no reason to run a full text transformer on a
-phone just to recompute the same numbers every time. Instead, `fod-export-mobileclip`
-computes all 82×8 embeddings **once**, on your machine, and writes them out as a small
-(~1.3 MB) binary file:
-
-* `mobileclip_text_bank.bin` — raw `float32`, row-major, shape `(num_categories, num_templates, 512)`
-* `mobileclip_text_bank.json` — the `categories`/`templates` lists and the shape above, so the app knows how to interpret the raw floats
-
-The phone's job then becomes a plain dot-product + top-k, no ML runtime involved — see the
-on-device snippets below.
+| File | Description |
+| :--- | :--- |
+| `best.pt` | Trained YOLO detector |
+| `mobileclip_s0.pt` | MobileCLIP checkpoint |
+| `model.pth` | Trained MLP classifier |
+| `label_encoder.json` | Class label mapping |
 
 ### Installation
 
-Model export needs `onnx`, `onnxruntime` (used by the verification snippet below), and
-`coremltools`, which aren't required for training/inference, so they live behind their own
-extra:
+Conversion runs **locally**, against the same weight files already used for local inference.
+
+#### Step 1 – Install the mobile dependencies
 
 ```bash
 pip install -e ".[mobile]"
 ```
-
-> **Tip:** it's still good practice to install this (or any) extra into its own virtual
-> environment rather than your main one, so a shared dependency (e.g. `protobuf`, which both
-> `onnx` and `coremltools` pull in) can't silently shift a version another project on the
-> same machine depends on:
-> ```bash
-> python -m venv .venv
-> # Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
-> pip install -e ".[mobile,dev]"
-> ```
-
-### Getting the converted files
-
-Conversion runs **locally**, against the same weight files already used for local inference
-(`best.pt`, `mobileclip_s0.pt`, `model.pth`, `label_encoder.json` — see
-[Local Inference](#local-inference) for where these come from). Run all three exports in one
-shot:
+#### Step 2 – Export all models
 
 ```bash
 fod-export-mobile \
@@ -310,8 +277,18 @@ fod-export-mobile \
   --label-encoder label_encoder.json \
   --output-dir mobile_models
 ```
+By default, this exports both Android (ONNX) and iOS (Core ML) models. To export for a specific platform only, use the --formats flag:
 
-Or convert a single model at a time:
+# Android only
+--formats onnx
+
+# iOS only
+--formats coreml
+
+
+#### Step 3 – Export individual models (optional)
+
+If only one model has changed, you can export it independently.
 
 ```bash
 fod-export-yolo        --weights best.pt              --output-dir mobile_models
@@ -319,10 +296,9 @@ fod-export-mobileclip  --weights mobileclip_s0.pt      --output-dir mobile_model
 fod-export-classifier  --weights model.pth --label-encoder label_encoder.json --output-dir mobile_models
 ```
 
-Add `--formats onnx` or `--formats coreml` to any of the above to convert for a single
-platform instead of both (default is both).
+#### Step 4 – Generated files
 
-This produces:
+After the export completes, the following directory structure is created:
 
 ```text
 mobile_models/
@@ -342,20 +318,42 @@ mobile_models/
     └── classifier_labels.json
 ```
 
-> On **Windows**: every `ios/*.mlpackage` above is written as `ios/*.mlmodel` instead (older
-> Core ML format - `coremltools` falls back to it automatically and prints a warning
-> explaining why; see [Limitations](#limitations)). Run on macOS/Linux to get `.mlpackage`
-> instead. The `android/*.onnx` files are unaffected - ONNX export has no platform-specific
-> behavior.
+#### Step 5 – Add the exported models to your application
+
+Copy the generated files into your mobile project.
 
 Drop `mobile_models/android/*` into your Android project's `app/src/main/assets/`, or
 `mobile_models/ios/*` into your Xcode project (drag the `.mlpackage`/`.mlmodel` files in
 directly - Xcode generates a Swift class for each one automatically, for either format).
 
-These converted files are **build artifacts**, not source - they're derived entirely from the
-weights already tracked in S3, so they're git-ignored rather than committed (see
-[What to push to GitHub](#what-to-push-to-github)). Anyone who needs them regenerates them
-locally with the commands above.
+### Model Conversion Details
+
+| Model | Format Outputs | Highlights & Requirements |
+| :--- | :--- | :--- |
+| **YOLO Detector** | `.onnx`<br>`.mlpackage` | • Exported via `ultralytics`<br>• NMS is baked directly into the graph (`nms=True`) |
+| **MobileCLIP Image Encoder** | `.onnx`<br>`.mlpackage` | • **Input:** `256×256` RGB image scaled to `[0, 1]`<br>• **Preprocessing:** Simple Resize + `ToTensor()` (no mean/std normalization)<br>• **Output:** 512-dim, L2-normalized embedding (matches `encode_image(..., normalize=True)`) |
+| **MobileCLIP Text Encoder** | *Skipped* | • Precomputed instead of converted (see details below) |
+| **MLP Classifier** | `.onnx`<br>`.mlpackage` | • Softmax is baked into the export<br>• Model outputs final class probabilities (not raw logits) |
+
+**Why the text encoder isn't converted:** MobileCLIP classifies an image by comparing its
+embedding against text embeddings of the fixed prompts in
+`src/fod_pipeline/data/mobileclip_prompts.json` (82 categories × 8 templates). Since that
+prompt list is fixed at build time, there's no reason to run a full text transformer on a
+phone just to recompute the same numbers every time. Instead, `fod-export-mobileclip`
+computes all 82×8 embeddings **once**, on your machine, and writes them out as a small
+(~1.3 MB) binary file:
+
+* `mobileclip_text_bank.bin` — raw `float32`, row-major, shape `(num_categories, num_templates, 512)`
+* `mobileclip_text_bank.json` — the `categories`/`templates` lists and the shape above, so the app knows how to interpret the raw floats
+
+The phone's job then becomes a plain dot-product + top-k, no ML runtime involved.
+
+
+> On **Windows**: every `ios/*.mlpackage` above is written as `ios/*.mlmodel` instead (older
+> Core ML format - `coremltools` falls back to it automatically and prints a warning
+> explaining why. Run on macOS/Linux to get `.mlpackage` instead. 
+> The `android/*.onnx` files are unaffected - ONNX export has no platform-specific
+> behavior.
 
 ### On-device inference flow
 
@@ -380,158 +378,6 @@ flowchart TD
     Top2 --> Hybrid{Same hybrid rule as<br/>pipeline/infer.py}:::process
     ClsPred --> Hybrid
 ```
-
-This is the same 5-stage flow described under [Architecture](#architecture) - only the
-runtime each stage executes in has changed (ONNX Runtime/Core ML instead of PyTorch).
-
-#### Android (Kotlin, ONNX Runtime Mobile)
-
-```kotlin
-// 1. Run the image encoder (after YOLO crop + resize to 256x256, pixels scaled to [0,1])
-val env = OrtEnvironment.getEnvironment()
-val imageInput = OnnxTensor.createTensor(env, inputImageBuffer, longArrayOf(1, 3, 256, 256))
-val embeddingTensor = imageEncoderSession.run(mapOf("image" to imageInput))
-val embedding = (embeddingTensor[0].value as Array<FloatArray>)[0]  // shape (512,)
-
-// 2. Score against the precomputed text bank - mirrors score_text_prompts()/topk_predictions()
-// textBank: FloatArray of size numCategories * numTemplates * 512, loaded from
-// mobileclip_text_bank.bin (see mobileclip_text_bank.json for numCategories/numTemplates)
-val bestPerCategory = FloatArray(numCategories) { Float.NEGATIVE_INFINITY }
-for (c in 0 until numCategories) {
-    for (t in 0 until numTemplates) {
-        val offset = (c * numTemplates + t) * 512
-        var dot = 0f
-        for (d in 0 until 512) dot += embedding[d] * textBank[offset + d]
-        if (dot > bestPerCategory[c]) bestPerCategory[c] = dot
-    }
-}
-val top2Indices = bestPerCategory.indices.sortedByDescending { bestPerCategory[it] }.take(2)
-val (mobileClipTop1, mobileClipTop2) = top2Indices.map { categories[it] }
-
-// 3. Run the classifier on the same embedding
-val embeddingInput = OnnxTensor.createTensor(env, arrayOf(embedding))
-val classifierOutput = classifierSession.run(mapOf("embedding" to embeddingInput))
-val classProbabilities = (classifierOutput[0].value as Array<FloatArray>)[0]
-val classifierPrediction = classifierLabels[classProbabilities.indices.maxBy { classProbabilities[it] }]
-```
-
-#### iOS (Swift, Core ML)
-
-```swift
-// 1. Run the image encoder (Xcode auto-generates MobileClipImageEncoder from the .mlpackage)
-let encoderOutput = try MobileClipImageEncoder(configuration: .init()).prediction(image: pixelBuffer)
-let embedding = encoderOutput.image_embedding // MLMultiArray, shape (1, 512)
-
-// 2. Score against the precomputed text bank (same algorithm as Android, above)
-// textBank loaded from mobileclip_text_bank.bin as a flat [Float]
-var bestPerCategory = [Float](repeating: -.infinity, count: numCategories)
-for c in 0..<numCategories {
-    for t in 0..<numTemplates {
-        let offset = (c * numTemplates + t) * 512
-        var dot: Float = 0
-        for d in 0..<512 { dot += embedding[d].floatValue * textBank[offset + d] }
-        bestPerCategory[c] = max(bestPerCategory[c], dot)
-    }
-}
-let top2 = bestPerCategory.enumerated().sorted { $0.element > $1.element }.prefix(2).map { categories[$0.offset] }
-
-// 3. Run the classifier on the same embedding
-let classifierOutput = try FODClassifier(configuration: .init()).prediction(embedding: embedding)
-let classifierPrediction = classifierOutput.classProbabilities.argmax() // then look up classifier_labels.json
-```
-
-### Verifying a conversion
-
-Because conversion still leaves PyTorch's process (traced to ONNX, or traced to Core ML),
-always sanity-check that the converted model's output matches the original PyTorch model
-before shipping it in an app.
-
-**Quick numerical check (Python, works for the ONNX path):**
-
-```python
-import numpy as np
-import onnxruntime as ort
-import torch
-from fod_pipeline.classifier.model import MLP2Classifier
-
-x = torch.randn(1, 512)
-
-torch_model = MLP2Classifier(num_classes=59)
-torch_model.load_state_dict(torch.load("model.pth", map_location="cpu"))
-torch_model.eval()
-with torch.no_grad():
-    torch_probs = torch.softmax(torch_model(x), dim=-1).numpy()
-
-session = ort.InferenceSession("mobile_models/android/fod_classifier.onnx")
-onnx_probs = session.run(["class_probabilities"], {"embedding": x.numpy().astype(np.float32)})[0]
-
-print("max abs diff:", np.abs(torch_probs - onnx_probs).max())  # ~1e-7, float32 rounding noise
-```
-
-`coremltools` can load and run a `.mlpackage`/`.mlmodel` the same way on macOS
-(`ct.models.MLModel(path).predict({...})`), but actually *running* Core ML inference requires
-macOS - conversion itself (the `fod-export-*` commands) works cross-platform.
-
-**On-device smoke test:** before wiring up the full app, load just the classifier `.onnx` /
-`.mlpackage` with a hand-crafted 512-float input vector (e.g. all zeros, or a known embedding
-dumped from `fod-infer`) and confirm the predicted class matches what `fod-infer` reports for
-the same image. Once that matches, add the YOLO and MobileCLIP stages one at a time rather
-than wiring the whole pipeline at once - it makes it much easier to tell which stage is wrong
-if predictions look off.
-
-### Limitations
-
-These aren't theoretical caveats - every one below was hit while actually running the
-export scripts end-to-end (against real, if untrained, model architectures) rather than
-just writing the code and assuming it would work.
-
-* **Core ML on Windows silently downgrades format.** `coremltools`' Windows wheel ships with
-  no compiled native extensions at all (verified: zero `.pyd` files in the installed
-  package), so the modern `mlprogram`/`.mlpackage` backend - which needs a native
-  "blob writer" to serialize weights - cannot run there. `torch_to_coreml()` in
-  `convert_utils.py` catches exactly that failure and falls back to the older
-  `neuralnetwork`/`.mlmodel` backend, which is pure Python and works everywhere; Xcode/Core
-  ML fully support loading either format, so this doesn't block using the model, but you
-  lose access to newer mlprogram-only quantization options. Run the export on macOS/Linux to
-  get a `.mlpackage` instead.
-* **Running a Core ML model (not just converting it) requires macOS**, regardless of format -
-  `coremltools`' `.predict()` calls into the real Core ML runtime, which only exists on
-  Apple platforms. Conversion itself (everything `fod-export-*` does) works cross-platform;
-  only *testing the output numerically on your own machine* needs a Mac (see
-  [Verifying a conversion](#verifying-a-conversion)).
-* **Why not TFLite too:** an earlier version of this feature targeted TFLite via `onnx2tf`
-  and hit a real, unresolved bug there - `onnx2tf`'s NCHW→NHWC layout heuristic mis-converts
-  MobileCLIP's ViT-style attention block (a batched QKV matmul), crashing before the model
-  even finished building, and `ultralytics`' own TFLite exporter additionally refused to run
-  on Windows at all. Switching Android to ONNX Runtime Mobile sidesteps both problems
-  entirely - there's no NCHW/NHWC translation step, and no OS restriction, since ONNX export
-  is `ultralytics`' most basic, universally-supported format. If TFLite is a hard requirement
-  for your app, `onnx2tf`'s `param_replacement_file` mechanism (a JSON keyed by ONNX node
-  name overriding a specific op's shape/transpose behavior) is its documented answer to this
-  class of bug, or Google's newer `ai-edge-torch` (PyTorch → TFLite via `torch.export`, no
-  ONNX/NCHW-NHWC step) avoids it structurally - at the time of writing it only ships Linux
-  wheels.
-* **Quantization:** exports default to `float32` for maximum accuracy/compatibility. For
-  smaller app size and faster inference, `onnxruntime` supports post-training quantization
-  (dynamic and static), and `coremltools` supports palettization/quantization - both are
-  reasonable follow-ups once the `float32` conversion is verified end-to-end.
-* **YOLO output format:** NMS is baked into both exports (`nms=True`), but you still need to
-  parse the output tensor layout, which differs between ONNX and Core ML - see
-  [ultralytics' export docs](https://docs.ultralytics.com/modes/export/) for the exact layout
-  per format.
-* **Model size:** none of these exports are quantized or pruned, so they're the same
-  effective size as the original PyTorch weights. Expect the MobileCLIP image encoder to
-  dominate app size.
-
-### What to push to GitHub
-
-Only the export **code** is source-controlled - the converted model files themselves are
-build artifacts (like `best.pt`/`model.pth` already are) and stay out of git:
-
-* Tracked: `src/fod_pipeline/mobile/`, the `mobile` extra in `pyproject.toml`, the new tests
-  under `tests/`, and this README section.
-* Ignored (`.gitignore`): `/mobile_models/`, `*.mlpackage/`, `*.onnx`, and the `.venv/` used
-  to install the `mobile` extra.
 
 ## Tests
 
