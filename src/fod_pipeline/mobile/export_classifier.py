@@ -4,13 +4,7 @@ Mobile) and Core ML (iOS).
 
 Input:  a 512-dim MobileCLIP image embedding (float32, shape (1, 512)).
 Output: per-class probabilities (float32, shape (1, num_classes)) -
-        softmax is baked into the export, see `wrappers.ClassifierWithSoftmax`.
-
-Usage:
-    fod-export-classifier \\
-        --weights model.pth \\
-        --label-encoder label_encoder.json \\
-        --output-dir mobile_models
+        softmax is baked into the export
 """
 from __future__ import annotations
 
