@@ -1,10 +1,11 @@
 """
-Thin nn.Module wrappers that pin down exactly what gets exported.
+Wrappers used when exporting models for mobile deployment.
 
-ONNX/CoreML conversion traces whatever `forward()` computes, so these
-wrappers exist to guarantee the exported graph reproduces the same math
-`fod_pipeline.pipeline.infer.HybridPipeline.predict()` runs today - no more,
-no less.
+This module adapts the original PyTorch models into a format that is more
+convenient for Android and iOS applications. It exposes only the MobileCLIP
+image encoder (excluding the text encoder) and wraps the classifier with a
+Softmax layer so the exported model returns class probabilities instead of
+raw logits.
 """
 from __future__ import annotations
 
@@ -13,13 +14,7 @@ from torch import nn
 
 
 class MobileClipImageEncoderExport(nn.Module):
-    """Image tower only, L2-normalized output.
-
-    Equivalent to ``fod_pipeline.core.embedding.encode_image(model, ...,
-    normalize=True)``, which is what ``HybridPipeline.predict()`` feeds to
-    both the MobileCLIP text-similarity step and the MLP classifier. The
-    text tower is intentionally excluded - see the MobileCLIP export
-    script for why.
+    """Image encoder only, L2-normalized output.
     """
 
     def __init__(self, mobileclip_model: nn.Module):
@@ -33,10 +28,6 @@ class MobileClipImageEncoderExport(nn.Module):
 class ClassifierWithSoftmax(nn.Module):
     """Wraps the MLP classifier so mobile apps get class probabilities
     directly instead of raw logits.
-
-    argmax(softmax(x)) == argmax(x), so this changes nothing about which
-    class wins - it just saves every mobile app from having to re-implement
-    softmax to show a confidence score.
     """
 
     def __init__(self, classifier: nn.Module):
