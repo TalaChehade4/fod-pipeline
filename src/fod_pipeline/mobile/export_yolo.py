@@ -5,18 +5,8 @@ Mobile) and Core ML (iOS).
 Unlike the MobileCLIP/classifier exports, this goes through
 ``ultralytics``'s own ``YOLO.export()`` API rather than the manual
 ONNX/coremltools path in `convert_utils`: ultralytics already implements
-and maintains first-class ONNX and Core ML exporters, so re-implementing
-that here would just be a worse copy of a solved problem.
+and maintains first-class ONNX and Core ML exporters.
 
-Input:  an RGB image, resized to `--imgsz` x `--imgsz` (default 640),
-        scaled to [0, 1] (float32, shape (1, 3, imgsz, imgsz)).
-Output: YOLO detections (boxes + class scores), with NMS baked into the
-        graph (``nms=True``) for both formats - see ultralytics' docs for
-        the exact output tensor layout per format, since it differs
-        slightly between ONNX and Core ML.
-
-Usage:
-    fod-export-yolo --weights best.pt --output-dir mobile_models
 """
 from __future__ import annotations
 
