@@ -267,7 +267,7 @@ Conversion runs **locally**, against the same weight files already used for loca
 ```bash
 pip install -e ".[mobile]"
 ```
-#### Step 2 – Export all models
+#### Step 2 – Export all models (Works on Mac Only)
 
 ```bash
 fod-export-mobile --yolo best.pt --mobileclip mobileclip_s0.pt --classifier-weights model.pth --label-encoder label_encoder.json --output-dir mobile_models
@@ -280,7 +280,7 @@ By default, this exports both Android (ONNX) and iOS (Core ML) models. To export
 --formats onnx
 ```
 
-##### iOS only
+##### iOS only (Works on Mac Only)
 
 ```bash
 --formats coreml
