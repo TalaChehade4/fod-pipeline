@@ -2,21 +2,9 @@
 Precomputed MobileCLIP text-embedding bank for on-device zero-shot matching.
 
 MobileCLIP classifies an image by comparing its embedding against text
-embeddings of fixed prompts (e.g. "a {category} found on an airport
-runway"). Since the category/template list
-(``fod_pipeline/data/mobileclip_prompts.json``) is fixed at build time, the
+embeddings of fixed prompts. Since the category/template list is fixed at build time, the
 text tower never needs to run on the phone: we run it once here and ship
 the resulting embeddings as a flat binary blob the app loads at startup.
-
-This mirrors ``fod_pipeline.core.embedding.build_text_features`` /
-``score_text_prompts`` exactly, so on-device scoring matches
-``HybridPipeline.predict()``:
-
-    similarity[image, category] = max over templates of (image . text[category, template])
-
-Binary layout of the ``.bin`` file: ``float32``, row-major,
-shape ``(num_categories, num_templates, embedding_dim)`` - i.e. category 0's
-templates first, each one `embedding_dim` floats.
 """
 from __future__ import annotations
 
