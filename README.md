@@ -274,10 +274,10 @@ fod-export-mobile --yolo best.pt --mobileclip mobileclip_s0.pt --classifier-weig
 ```
 By default, this exports both Android (ONNX) and iOS (Core ML) models. To export for a specific platform only, use the --formats flag:
 
-# Android only
+##### Android only
 --formats onnx
 
-# iOS only
+##### iOS only
 --formats coreml
 
 
