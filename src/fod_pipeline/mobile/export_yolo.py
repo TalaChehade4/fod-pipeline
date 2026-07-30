@@ -29,30 +29,39 @@ def _yolov5_repo_dir(weights_path: str) -> str:
 
 
 def _run_yolov5_export(weights_path: str, formats: list, imgsz: int) -> dict:
+    """Export each format independently, so one format failing (e.g. CoreML
+    needing native coremltools libs unavailable on Windows) doesn't discard
+    formats that already succeeded."""
     weights_path = os.path.abspath(weights_path)
     repo_dir = _yolov5_repo_dir(weights_path)
-
-    cmd = [
-        sys.executable,
-        os.path.join(repo_dir, "export.py"),
-        "--weights", weights_path,
-        "--imgsz", str(imgsz),
-        "--device", "cpu",
-        "--include", *formats,
-        "--nms",
-    ]
-    result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"YOLOv5 export failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
-        )
-
     stem = os.path.splitext(weights_path)[0]
+
     exported = {}
-    if "onnx" in formats:
-        exported["onnx"] = f"{stem}.onnx"
-    if "coreml" in formats:
-        exported["coreml"] = f"{stem}.mlpackage"
+    errors = {}
+    for fmt in formats:
+        cmd = [
+            sys.executable,
+            os.path.join(repo_dir, "export.py"),
+            "--weights", weights_path,
+            "--imgsz", str(imgsz),
+            "--device", "cpu",
+            "--include", fmt,
+            "--nms",
+        ]
+        result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            errors[fmt] = f"{result.stdout}\n{result.stderr}"
+            continue
+        exported[fmt] = f"{stem}.onnx" if fmt == "onnx" else f"{stem}.mlpackage"
+
+    if errors:
+        details = "\n\n".join(f"[{fmt}]\n{msg}" for fmt, msg in errors.items())
+        message = f"YOLOv5 export failed for format(s) {list(errors)}:\n{details}"
+        if exported:
+            print(f"WARNING: {message}")
+        else:
+            raise RuntimeError(message)
+
     return exported
 
 
