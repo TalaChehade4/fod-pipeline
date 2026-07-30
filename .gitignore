@@ -38,6 +38,12 @@ embeddings*.json
 *.csv
 !tests/**/*.csv
 
+# Mobile export artifacts (fod-export-*) - regenerated locally from the
+# weights above, never committed.
+/mobile_models/
+*.mlpackage/
+*.onnx
+
 # OS/editor
 .DS_Store
 .vscode/

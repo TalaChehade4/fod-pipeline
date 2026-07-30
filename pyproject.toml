@@ -32,6 +32,7 @@ dependencies = [
 [project.optional-dependencies]
 sagemaker = ["sagemaker"]
 dev = ["pytest", "pytest-cov"]
+mobile = ["onnx", "onnxruntime", "coremltools>=7.2"]
 
 [project.scripts]
 fod-build-label-map = "fod_pipeline.pipeline.build_label_map:main"
@@ -47,6 +48,12 @@ fod-sm-embed = "fod_pipeline.sagemaker.launch_embedding_job:main"
 fod-sm-prepare = "fod_pipeline.sagemaker.launch_dataset_prep_job:main"
 fod-sm-train = "fod_pipeline.sagemaker.launch_training_job:main"
 fod-sm-evaluate = "fod_pipeline.sagemaker.launch_testing_job:main"
+
+# Requires the `mobile` extra (pip install -e ".[mobile]").
+fod-export-yolo = "fod_pipeline.mobile.export_yolo:main"
+fod-export-mobileclip = "fod_pipeline.mobile.export_mobileclip:main"
+fod-export-classifier = "fod_pipeline.mobile.export_classifier:main"
+fod-export-mobile = "fod_pipeline.mobile.export_all:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
