@@ -2,27 +2,11 @@
 Export the trained YOLO detector to ONNX (Android, via ONNX Runtime
 Mobile) and Core ML (iOS).
 
-The detector is a genuine YOLOv5 checkpoint (see `core.detection.load_yolo`,
-which loads it via ``torch.hub.load("ultralytics/yolov5", "custom", ...)``),
-not a YOLOv8+ ``ultralytics`` model - the two are not interchangeable, since
-YOLOv8's ``ultralytics.YOLO()`` cannot deserialize YOLOv5 checkpoints. So
-this exports through YOLOv5's own ``export.py`` (cached locally by
-``torch.hub`` the same way ``load_yolo`` fetches it) rather than
-``ultralytics.YOLO().export()``.
-
 NMS note: YOLOv5's exporter only bakes NMS into the CoreML graph (via
 ``--nms``, which wraps the model before tracing); its ONNX export has no
 NMS parameter at all. So the iOS CoreML model returns final detections,
 but the Android ONNX model returns raw predictions - the app must run NMS
 itself for Android.
-
-Input:  an RGB image, resized to `--imgsz` x `--imgsz` (default 640),
-        scaled to [0, 1] (float32, shape (1, 3, imgsz, imgsz)).
-Output: ONNX -> raw predictions (boxes + class scores), NMS not included.
-        Core ML -> final detections, NMS baked into the graph.
-
-Usage:
-    fod-export-yolo --weights best.pt --output-dir mobile_models
 """
 from __future__ import annotations
 
@@ -34,12 +18,10 @@ import sys
 
 
 def _yolov5_repo_dir(weights_path: str) -> str:
-    """Path to the local ``torch.hub`` cache of ``ultralytics/yolov5``, fetching it first if needed."""
     import torch
 
     repo_dir = os.path.join(torch.hub.get_dir(), "ultralytics_yolov5_master")
     if not os.path.isdir(repo_dir):
-        # Same call core.detection.load_yolo makes; triggers torch.hub to clone/cache the repo.
         torch.hub.load(
             "ultralytics/yolov5", "custom", path=weights_path, autoshape=False, trust_repo=True
         )
