@@ -3,19 +3,6 @@ Export MobileCLIP's image encoder to ONNX (Android, via ONNX Runtime
 Mobile) and Core ML (iOS), and precompute its text-prompt embedding bank
 for on-device zero-shot matching.
 
-Only the *image* tower is converted - see `fod_pipeline.mobile.text_bank`
-for why the text tower is precomputed instead of exported.
-
-Input:  an RGB image resized to 256x256, scaled to [0, 1] (float32,
-        shape (1, 3, 256, 256), channel-first). This matches MobileCLIP's
-        own preprocessing transform exactly (Resize(256) -> CenterCrop(256)
-        -> ToTensor(); no mean/std normalization).
-Output: a 512-dim, L2-normalized image embedding (float32, shape (1, 512)).
-
-Usage:
-    fod-export-mobileclip \\
-        --weights mobileclip_s0.pt \\
-        --output-dir mobile_models
 """
 from __future__ import annotations
 
