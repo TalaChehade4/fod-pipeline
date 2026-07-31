@@ -320,12 +320,12 @@ mobile_models/
 
 ### Model Conversion Details
 
-| Model | Format Outputs | Highlights & Requirements |
-| :--- | :--- | :--- |
-| **YOLO Detector** | `.onnx`<br>`.mlpackage` | • Exported via `ultralytics`<br>• NMS is baked directly into the graph (`nms=True`) |
-| **MobileCLIP Image Encoder** | `.onnx`<br>`.mlpackage` | • **Input:** `256×256` RGB image scaled to `[0, 1]`<br>• **Preprocessing:** Simple Resize + `ToTensor()` (no mean/std normalization)<br>• **Output:** 512-dim, L2-normalized embedding (matches `encode_image(..., normalize=True)`) |
-| **MobileCLIP Text Encoder** | *Skipped* | • Precomputed instead of converted (see details below) |
-| **MLP Classifier** | `.onnx`<br>`.mlpackage` | • Softmax is baked into the export<br>• Model outputs final class probabilities (not raw logits) |
+| Model | Format Outputs |
+| :--- | :--- |
+| **YOLO Detector** | `.onnx`<br>`.mlpackage` |
+| **MobileCLIP Image Encoder** | `.onnx`<br>`.mlpackage` |
+| **MobileCLIP Text Encoder** | *Skipped* |
+| **MLP Classifier** | `.onnx`<br>`.mlpackage` |
 
 **Why the text encoder isn't converted:** MobileCLIP classifies an image by comparing its
 embedding against text embeddings of the fixed prompts in
