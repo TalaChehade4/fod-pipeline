@@ -332,20 +332,13 @@ embedding against text embeddings of the fixed prompts in
 `src/fod_pipeline/data/mobileclip_prompts.json` (82 categories × 8 templates). Since that
 prompt list is fixed at build time, there's no reason to run a full text transformer on a
 phone just to recompute the same numbers every time. Instead, `fod-export-mobileclip`
-computes all 82×8 embeddings **once**, on your machine, and writes them out as a small
+computes all 82×8 embeddings **once**, on the machine, and writes them out as a small
 (~1.3 MB) binary file:
 
-* `mobileclip_text_bank.bin` — raw `float32`, row-major, shape `(num_categories, num_templates, 512)`
-* `mobileclip_text_bank.json` — the `categories`/`templates` lists and the shape above, so the app knows how to interpret the raw floats
+* `mobileclip_text_bank.bin` — raw `float32`
+* `mobileclip_text_bank.json` — the `categories`/`templates` lists, so the app knows how to interpret the raw floats
 
 The phone's job then becomes a plain dot-product + top-k, no ML runtime involved.
-
-
-> On **Windows**: every `ios/*.mlpackage` above is written as `ios/*.mlmodel` instead (older
-> Core ML format - `coremltools` falls back to it automatically and prints a warning
-> explaining why. Run on macOS/Linux to get `.mlpackage` instead. 
-> The `android/*.onnx` files are unaffected - ONNX export has no platform-specific
-> behavior.
 
 ### On-device inference flow
 
