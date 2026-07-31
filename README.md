@@ -298,7 +298,7 @@ fod-export-classifier  --weights model.pth --label-encoder label_encoder.json --
 
 #### Step 4 – Generated files
 
-After the export completes, the following directory structure is created:
+After the export completes, the following directory structure is created in `s3://oreyeon-models/Tala-temp/fod-pipeline/mobile_models/`:
 
 ```text
 mobile_models/
