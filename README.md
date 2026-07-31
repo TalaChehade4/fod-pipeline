@@ -318,14 +318,6 @@ mobile_models/
     └── classifier_labels.json
 ```
 
-#### Step 5 – Add the exported models to your application
-
-Copy the generated files into your mobile project.
-
-Drop `mobile_models/android/*` into your Android project's `app/src/main/assets/`, or
-`mobile_models/ios/*` into your Xcode project (drag the `.mlpackage`/`.mlmodel` files in
-directly - Xcode generates a Swift class for each one automatically, for either format).
-
 ### Model Conversion Details
 
 | Model | Format Outputs | Highlights & Requirements |
